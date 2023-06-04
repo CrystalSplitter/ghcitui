@@ -14,7 +14,7 @@ import qualified Daemon as D
 import Tui (getSurroundingSrc, loadFileSrc)
 
 main :: IO ()
-main = launchBrick
+main = launchBrick 
 
 launch :: IO ()
 launch = do
@@ -53,8 +53,3 @@ fibty n =
     let left = fibty (n - 1)
         right = fibty (n - 2)
      in left + right
-
-{-
---> fib 5
-  Stopped in Main.fib, app/Main.hs:22:9-33
--}
