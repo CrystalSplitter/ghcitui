@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE RecordPuns #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module Daemon
     ( CodeLine (..)
@@ -14,13 +14,13 @@ module Daemon
     , setBreakpointLine
     , quit
     , InterpState (..)
+    , emptyInterpreterState
     , continue
+    , load
     ) where
 
-import Data.Maybe (catMaybes, isJust)
 import Data.String.Interpolate (i)
 import qualified Data.Text as Text
-import Debug.Trace
 import qualified Language.Haskell.Ghcid as Ghcid
 
 import qualified ParseContext as PC (ParseContextOut (..), linesToText, parseContext)
@@ -92,6 +92,9 @@ stepInto state func = execMuted state (":step " ++ func)
 
 continue :: (Monoid a) => InterpState a -> IO (InterpState a)
 continue state = execMuted state ":continue"
+
+load :: (Monoid a) => InterpState a -> FilePath -> IO (InterpState a)
+load state filepath = execMuted state (":l " ++ filepath)
 
 exec :: (Monoid a) => InterpState a -> String -> IO (InterpState a, [String])
 exec state@InterpState{_ghci} cmd = do

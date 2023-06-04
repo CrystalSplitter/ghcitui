@@ -35,3 +35,6 @@ getSurroundingSrc fileContents ySize location =
         afterLineCount = min (lineCount - loc1) ySize
      in
         (take afterLineCount . drop beforeLineCount . addMarker loc1) splitLines
+
+addMarker :: Int -> [Text] -> [Text]
+addMarker loc = zipWith (\idx val -> if idx == loc then "  > " `append` val else "    " `append` val) [0 ..]

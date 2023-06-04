@@ -58,5 +58,5 @@ parseContext contextText =
                     colField
                         >>= (\x -> splitBy "-" x `atMay` idx)
                         >>= readMaybe . unpack
-             in trace (unpack $ fromJust infoLine) (getCol 0, getCol 1)
+             in (getCol 0, getCol 1)
      in ParseContextOut myFunc myFile myLineno myColRange
