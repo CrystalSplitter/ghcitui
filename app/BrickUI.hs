@@ -1,5 +1,4 @@
 {-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module BrickUI
@@ -18,24 +17,30 @@ import Data.Text (Text, append, pack)
 import qualified Data.Text
 import qualified Data.Text.IO
 import qualified Graphics.Vty as V
-import Safe
+import Safe (atMay)
 
 import qualified Daemon
 
-data AppName = GHCiTUI | CodeViewport deriving (Eq, Show, Ord)
+data AppName = GHCiTUI | CodeViewport | LiveInterpreter deriving (Eq, Show, Ord)
 
+-- | Application state wrapper
 data AppState = AppState
     { interpState :: Daemon.InterpState ()
     , sourceMap :: Map.Map FilePath Text
+    -- ^ Mapping between source filepaths and their contents.
     , appStateConfig :: AppStateConfig
+    -- ^ Program launch configuration
+    , splashContents :: Maybe Text
     }
 
+-- | Update the source map given any app state changes.
 updateSourceMap :: AppState -> IO AppState
 updateSourceMap s =
-    case s.interpState.filepath of
+    case s.interpState.pauseLoc.filepath of
         Nothing -> pure s
         (Just filepath) -> updateSourceMapWithFilepath s filepath
 
+-- | Update the source map with a given filepath.
 updateSourceMapWithFilepath :: AppState -> FilePath -> IO AppState
 updateSourceMapWithFilepath s filepath
     | Map.member filepath s.sourceMap = pure s
@@ -46,71 +51,117 @@ updateSourceMapWithFilepath s filepath
 
 appDraw :: AppState -> [B.Widget AppName]
 appDraw s =
-    [ B.borderWithLabel
-        (B.txt ("Source: " `append` maybe "?" pack (s.interpState.filepath)))
-        ( B.withVScrollBars
-            B.OnRight
-            ( B.viewport
-                CodeViewport
-                B.Vertical
-                ( B.padRight B.Max (makeCodeViewportBoxes s)
+    [ ( B.borderWithLabel
+            (B.txt ("Source: " `append` maybe "?" pack (s.interpState.pauseLoc.filepath)))
+            ( B.withVScrollBars
+                B.OnRight
+                ( B.viewport
+                    CodeViewport
+                    B.Vertical
+                    ( B.padRight B.Max (makeCodeViewport s)
+                    )
                 )
             )
-        )
-        <=> B.borderWithLabel
-            (B.txt "Interpreter")
-            (B.padRight B.Max (B.txt ">>> "))
+            -- TODO: Make this an editor viewport.
+            <=> B.borderWithLabel
+                (B.txt "Interpreter")
+                (B.padRight B.Max (B.txt " >>> "))
+      )
+        -- TODO: Make this an expandable viewport, maybe?
+        <+> B.borderWithLabel
+            (B.txt "Info")
+            ( B.padBottom
+                B.Max
+                ( B.padLeft
+                    (B.Pad 20)
+                    (B.txt " ") -- Important that there's a space here for padding.
+                )
+            )
     ]
 
-prefixLine :: Int -> B.Widget n -> (Int, B.Widget n) -> B.Widget n
-prefixLine digitWidth prefix (idx, lineWidget) =
-    B.withAttr
-        (B.attrName "line-numbers")
-        (B.txt (formatDigits digitWidth idx))
-        <+> prefix
-        <+> lineWidget
+data GutterInfo = GutterInfo
+    { isStoppedHere :: !Bool
+    , isBreakpoint :: !Bool
+    , gutterLineNumber :: !Int
+    , gutterDigitWidth :: !Int
+    }
 
-makeCodeViewportBoxes :: AppState -> B.Widget AppName
-makeCodeViewportBoxes s =
-    case (s.interpState.filepath >>= (s.sourceMap Map.!?) :: Maybe Text) of
-        Nothing -> B.txt "No source file loaded"
+-- | Prepend gutter information on each line in the primary viewport.
+prependGutter :: GutterInfo -> B.Widget n -> B.Widget n
+prependGutter gi line = makeGutter gi <+> line
+
+-- | Prepend gutter information on each line in the primary viewport.
+makeGutter :: GutterInfo -> B.Widget n
+makeGutter GutterInfo{..} = lineNoWidget <+> emptyW <+> breakColumn <+> stopColumn <+> emptyW
+  where
+    emptyW = B.txt " "
+    lineNoWidget =
+        B.withAttr
+            (B.attrName "line-numbers")
+            (B.txt (formatDigits gutterDigitWidth gutterLineNumber))
+    breakColumn
+        | isBreakpoint =
+            B.withAttr
+                (B.attrName "breakpoint-marker")
+                (B.txt "@")
+        | otherwise = emptyW
+    stopColumn
+        | isStoppedHere = B.withAttr (B.attrName "stop-line") (B.txt ">")
+        | otherwise = emptyW
+
+-- | Make the primary viewport widget.
+makeCodeViewport :: AppState -> B.Widget AppName
+makeCodeViewport s =
+    case (s.interpState.pauseLoc.filepath >>= (s.sourceMap Map.!?) :: Maybe Text) of
+        Nothing ->
+            B.padTop (B.Pad 3) $
+                B.hCenter $
+                    B.withAttr (B.attrName "styled") $
+                        maybe (B.txt "No source file loaded") B.txt s.splashContents
         Just sourceData ->
             let
                 splitSourceData = Data.Text.lines sourceData
-                prefixLine' = prefixLine (getNumDigits (length splitSourceData))
-                originalLookupLineNo = fromMaybe (-1) s.interpState.lineno - 1
+                gutterInfoForLine lineno =
+                    GutterInfo
+                        { isStoppedHere = Just lineno == s.interpState.pauseLoc.lineno
+                        , isBreakpoint = lineno `elem` Daemon.getBpInCurFile s.interpState
+                        , gutterLineNumber = lineno
+                        , gutterDigitWidth = getNumDigits $ length splitSourceData
+                        }
+                prefixLineDefault' (lineno, w) =
+                    prependGutter
+                        (gutterInfoForLine lineno)
+                        w
+                originalLookupLineNo = fromMaybe (-1) s.interpState.pauseLoc.lineno - 1
                 -- Original Line of Interest
                 originalloi =
                     Data.Text.lines sourceData `atMay` originalLookupLineNo
 
-                theLineWidget :: Maybe (B.Widget AppName)
-                theLineWidget =
-                    ( \x ->
-                        let lineWidget = makeLineWidget x s.interpState.colrange
-                         in prefixLine' (B.withAttr (B.attrName "stop-line") $ B.txt " > ") (originalLookupLineNo + 1, lineWidget)
-                    )
-                        <$> originalloi
+                stoppedLineW :: Text -> B.Widget AppName
+                stoppedLineW lineTxt =
+                    let lineWidget = makeStoppedLineWidget lineTxt s.interpState.pauseLoc.colrange
+                     in prependGutter (gutterInfoForLine (originalLookupLineNo + 1)) lineWidget
 
                 -- Surrounding lines in the viewport
                 beforeLines =
-                    case s.interpState.lineno of
+                    case s.interpState.pauseLoc.lineno of
                         Nothing -> mempty
                         Just lineno ->
-                            prefixLine' (B.txt "   ")
+                            prefixLineDefault'
                                 <$> zip
                                     [1 ..]
                                     (B.txt <$> take (max 0 (lineno - 1)) splitSourceData)
                 afterLines =
-                    case s.interpState.lineno of
+                    case s.interpState.pauseLoc.lineno of
                         Nothing -> B.txt <$> Data.Text.lines sourceData
                         Just lineno ->
-                            prefixLine' (B.txt "   ")
+                            prefixLineDefault'
                                 <$> zip
                                     [originalLookupLineNo + 2 ..]
                                     (B.txt <$> drop lineno splitSourceData)
 
                 composedTogether =
-                    case theLineWidget of
+                    case stoppedLineW <$> originalloi of
                         Nothing -> B.vBox afterLines
                         Just w ->
                             B.vBox beforeLines
@@ -119,12 +170,13 @@ makeCodeViewportBoxes s =
              in
                 composedTogether
 
-makeLineWidget :: Text -> (Maybe Int, Maybe Int) -> B.Widget AppName
-makeLineWidget lineData (Nothing, _) =
+-- | Make the Stopped Line widget (the line where we paused execution)
+makeStoppedLineWidget :: Text -> (Maybe Int, Maybe Int) -> B.Widget AppName
+makeStoppedLineWidget lineData (Nothing, _) =
     B.withAttr (B.attrName "stop-line") (B.txt lineData)
-makeLineWidget lineData (Just startCol, Nothing) =
-    makeLineWidget lineData (Just startCol, Just (startCol + 1))
-makeLineWidget lineData (Just startCol, Just endCol) =
+makeStoppedLineWidget lineData (Just startCol, Nothing) =
+    makeStoppedLineWidget lineData (Just startCol, Just (startCol + 1))
+makeStoppedLineWidget lineData (Just startCol, Just endCol) =
     let (lineDataBefore, partial) = Data.Text.splitAt (startCol - 1) lineData
         (lineDataRange, lineDataAfter) = Data.Text.splitAt (endCol - startCol + 1) partial
      in B.withAttr
@@ -186,6 +238,7 @@ handleEvent ev =
                 pure ()
         _ -> pure ()
 
+-- | Brick main program.
 brickApp :: B.App AppState e AppName
 brickApp =
     B.App
@@ -200,28 +253,33 @@ brickApp =
                     [ (B.attrName "stop-line", B.fg V.red)
                     , (B.attrName "line-numbers", B.fg V.cyan)
                     , (B.attrName "underline", V.currentAttr `V.withStyle` V.underline)
+                    , (B.attrName "styled", B.fg V.magenta)
                     ]
         }
 
 type Command = String
 
-data AppStateConfig = AppStateConfig
+newtype AppStateConfig = AppStateConfig
     { startupSplashPath :: FilePath
     }
 
+-- TODO: This should not be hardcoded for debugging.
 makeInitialState :: AppStateConfig -> Command -> IO AppState
 makeInitialState config cmd = do
     interpState <-
         Daemon.startup cmd "."
             >>= flip Daemon.load "app/Main.hs"
             >>= flip Daemon.stepInto "fibty 10"
+    splashContents <- Data.Text.IO.readFile config.startupSplashPath
     pure $
         AppState
             { interpState
             , sourceMap = mempty
             , appStateConfig = config
+            , splashContents = Just splashContents
             }
 
+-- | Start the Brick UI
 launchBrick :: IO ()
 launchBrick = do
     let commandType = "cabal" :: Command
@@ -229,5 +287,5 @@ launchBrick = do
             "cabal" -> "cabal v2-repl ghcitui"
             _ -> error "Not a supported command type"
     initialState <- makeInitialState (AppStateConfig "assets/splash.txt") cmd
-    finalState <- B.defaultMain brickApp initialState
+    _ <- B.defaultMain brickApp initialState
     pure ()

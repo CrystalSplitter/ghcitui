@@ -2,13 +2,17 @@
 
 module Tui (loadFileSrc, getSurroundingSrc) where
 
+{-
+
+This file probably either doesn't need to exist, or should be merged with
+BrickUI.hs
+
+-}
+
 import qualified Data.IORef as IORef
 import Data.Text (Text, append, lines)
 import Data.Text.IO (readFile)
-import Safe
 import Prelude hiding (lines, readFile)
-
-import Debug.Trace
 
 loadFileSrc :: FilePath -> IO (IORef.IORef Text)
 loadFileSrc fp = do

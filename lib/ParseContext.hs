@@ -1,9 +1,7 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module ParseContext (ParseContextOut (..), linesToText, parseContext) where
 
 import Data.Functor ((<&>))
-import Data.Maybe (fromJust, isJust)
+import Data.Maybe (isJust)
 import Data.Text (Text, dropWhileEnd, pack, stripStart, unpack)
 import Safe
 import Text.Regex.TDFA ((=~~))
@@ -11,14 +9,13 @@ import Text.Regex.TDFA ((=~~))
 import StringUtil
 import Text.Read (readMaybe)
 
-import Debug.Trace
-
 ghcidPrompt :: Text
 ghcidPrompt = "#~GHCID-START~#"
 
 linesToText :: [String] -> Text
 linesToText = pack . unlines
 
+-- | Output record datatype for @parseContext@.
 data ParseContextOut = ParseContextOut
     { func :: Maybe Text
     , filepath :: Maybe FilePath
@@ -27,6 +24,7 @@ data ParseContextOut = ParseContextOut
     }
     deriving (Show)
 
+-- | Parse the output from ":show context" for the interpreter state.
 parseContext :: Text -> ParseContextOut
 parseContext contextText =
     let splits = splitBy ghcidPrompt contextText

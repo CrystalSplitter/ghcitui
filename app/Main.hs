@@ -1,20 +1,9 @@
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedRecordDot #-}
-
 module Main where
 
-import Control.Monad (unless)
-import Data.IORef (readIORef)
-import qualified Data.Text.IO as TextIO
-import System.IO as SIO
-
 import BrickUI (launchBrick)
-import qualified Daemon as D
-import Tui (getSurroundingSrc, loadFileSrc)
 
-main :: IO ()
-main = launchBrick 
+{-
+Old code for reference.
 
 launch :: IO ()
 launch = do
@@ -45,6 +34,7 @@ launch = do
     loop state
     D.quit state
     pure ()
+-}
 
 fibty :: Int -> Int
 fibty 1 = 0
@@ -53,3 +43,6 @@ fibty n =
     let left = fibty (n - 1)
         right = fibty (n - 2)
      in left + right
+
+main :: IO ()
+main = launchBrick

@@ -1,8 +1,6 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module StringUtil (splitBy) where
 
-import Data.Text (Text, breakOn, drop, length, pack)
+import Data.Text (Text, breakOn, drop, length)
 import Prelude hiding (drop, length)
 
 splitBy :: Text -> Text -> [Text]
