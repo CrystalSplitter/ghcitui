@@ -20,18 +20,28 @@ import qualified Graphics.Vty as V
 import Safe (atMay)
 
 import qualified Daemon
+import Debug.Trace (trace)
+import qualified Loc
 
 data AppName = GHCiTUI | CodeViewport | LiveInterpreter deriving (Eq, Show, Ord)
 
 -- | Application state wrapper
 data AppState = AppState
     { interpState :: Daemon.InterpState ()
+    , selectedFile :: Maybe FilePath
+    , selectedLine :: Int
     , sourceMap :: Map.Map FilePath Text
     -- ^ Mapping between source filepaths and their contents.
     , appStateConfig :: AppStateConfig
     -- ^ Program launch configuration
     , splashContents :: Maybe Text
     }
+
+resetSelectedLine :: AppState -> AppState
+resetSelectedLine s@AppState{interpState} = s{selectedFile, selectedLine}
+  where
+    selectedLine = fromMaybe 1 interpState.pauseLoc.linenoF
+    selectedFile = interpState.pauseLoc.filepath
 
 -- | Update the source map given any app state changes.
 updateSourceMap :: AppState -> IO AppState
@@ -82,6 +92,7 @@ appDraw s =
 data GutterInfo = GutterInfo
     { isStoppedHere :: !Bool
     , isBreakpoint :: !Bool
+    , isSelected :: !Bool
     , gutterLineNumber :: !Int
     , gutterDigitWidth :: !Int
     }
@@ -92,97 +103,102 @@ prependGutter gi line = makeGutter gi <+> line
 
 -- | Prepend gutter information on each line in the primary viewport.
 makeGutter :: GutterInfo -> B.Widget n
-makeGutter GutterInfo{..} = lineNoWidget <+> emptyW <+> breakColumn <+> stopColumn <+> emptyW
+makeGutter GutterInfo{..} =
+    lineNoWidget <+> spaceW <+> stopColumn <+> breakColumn <+> spaceW
   where
-    emptyW = B.txt " "
+    spaceW = B.txt " "
     lineNoWidget =
-        B.withAttr
-            (B.attrName "line-numbers")
-            (B.txt (formatDigits gutterDigitWidth gutterLineNumber))
+        let attr = B.attrName (if isSelected then "selected-line-numbers" else "line-numbers")
+         in B.withAttr attr (B.txt (formatDigits gutterDigitWidth gutterLineNumber))
     breakColumn
-        | isBreakpoint =
-            B.withAttr
-                (B.attrName "breakpoint-marker")
-                (B.txt "@")
-        | otherwise = emptyW
+        | isSelected && isBreakpoint = B.withAttr (B.attrName "selected-marker") (B.txt "@")
+        | isSelected = B.withAttr (B.attrName "selected-marker") (B.txt ">")
+        | isBreakpoint = B.withAttr (B.attrName "breakpoint-marker") (B.txt "b")
+        | otherwise = spaceW
     stopColumn
-        | isStoppedHere = B.withAttr (B.attrName "stop-line") (B.txt ">")
-        | otherwise = emptyW
+        | isStoppedHere = B.withAttr (B.attrName "stop-line") (B.txt "!")
+        | otherwise = spaceW
+
+-- | Return the potential contents of the current paused file location.
+getSourceContents :: AppState -> Maybe Text
+getSourceContents s = s.selectedFile >>= (s.sourceMap Map.!?)
 
 -- | Make the primary viewport widget.
 makeCodeViewport :: AppState -> B.Widget AppName
 makeCodeViewport s =
-    case (s.interpState.pauseLoc.filepath >>= (s.sourceMap Map.!?) :: Maybe Text) of
-        Nothing ->
-            B.padTop (B.Pad 3) $
-                B.hCenter $
-                    B.withAttr (B.attrName "styled") $
-                        maybe (B.txt "No source file loaded") B.txt s.splashContents
-        Just sourceData ->
-            let
-                splitSourceData = Data.Text.lines sourceData
-                gutterInfoForLine lineno =
-                    GutterInfo
-                        { isStoppedHere = Just lineno == s.interpState.pauseLoc.lineno
-                        , isBreakpoint = lineno `elem` Daemon.getBpInCurFile s.interpState
-                        , gutterLineNumber = lineno
-                        , gutterDigitWidth = getNumDigits $ length splitSourceData
-                        }
-                prefixLineDefault' (lineno, w) =
-                    prependGutter
-                        (gutterInfoForLine lineno)
-                        w
-                originalLookupLineNo = fromMaybe (-1) s.interpState.pauseLoc.lineno - 1
-                -- Original Line of Interest
-                originalloi =
-                    Data.Text.lines sourceData `atMay` originalLookupLineNo
+    let sourceDataMaybe = getSourceContents s
+     in case sourceDataMaybe of
+            Nothing ->
+                B.padTop (B.Pad 3) $
+                    B.hCenter $
+                        B.withAttr (B.attrName "styled") $
+                            maybe (B.txt "No source file loaded") B.txt s.splashContents
+            Just sourceData -> makeCodeViewport' s sourceData
 
-                stoppedLineW :: Text -> B.Widget AppName
-                stoppedLineW lineTxt =
-                    let lineWidget = makeStoppedLineWidget lineTxt s.interpState.pauseLoc.colrange
-                     in prependGutter (gutterInfoForLine (originalLookupLineNo + 1)) lineWidget
+-- | Viewport when we have source contents.
+makeCodeViewport' :: AppState -> Text -> B.Widget AppName
+makeCodeViewport' s sourceData = composedTogether
+  where
+    splitSourceData = Data.Text.lines sourceData
+    breakpoints = Daemon.getBpInCurModule s.interpState
+    gutterInfoForLine lineno =
+        GutterInfo
+            { isStoppedHere = Just lineno == s.interpState.pauseLoc.linenoF
+            , isBreakpoint = lineno `elem` breakpoints
+            , gutterLineNumber = lineno
+            , gutterDigitWidth = getNumDigits $ length splitSourceData
+            , isSelected = lineno == s.selectedLine
+            }
+    prefixLineDefault' (lineno, w) =
+        prependGutter
+            (gutterInfoForLine lineno)
+            w
+    originalLookupLineNo = fromMaybe 0 s.interpState.pauseLoc.linenoF
 
-                -- Surrounding lines in the viewport
-                beforeLines =
-                    case s.interpState.pauseLoc.lineno of
-                        Nothing -> mempty
-                        Just lineno ->
-                            prefixLineDefault'
-                                <$> zip
-                                    [1 ..]
-                                    (B.txt <$> take (max 0 (lineno - 1)) splitSourceData)
-                afterLines =
-                    case s.interpState.pauseLoc.lineno of
-                        Nothing -> B.txt <$> Data.Text.lines sourceData
-                        Just lineno ->
-                            prefixLineDefault'
-                                <$> zip
-                                    [originalLookupLineNo + 2 ..]
-                                    (B.txt <$> drop lineno splitSourceData)
+    stoppedLineW :: Text -> B.Widget AppName
+    stoppedLineW lineTxt =
+        let lineWidget = makeStoppedLineWidget lineTxt s.interpState.pauseLoc.colrangeF
+         in prefixLineDefault' (originalLookupLineNo, lineWidget)
 
-                composedTogether =
-                    case stoppedLineW <$> originalloi of
-                        Nothing -> B.vBox afterLines
-                        Just w ->
-                            B.vBox beforeLines
-                                <=> w
-                                <=> B.vBox afterLines
-             in
-                composedTogether
+    selectedLineW :: Text -> B.Widget AppName
+    selectedLineW lineTxt =
+        let lineWidget = B.txt $ Data.Text.replace " " " " lineTxt
+         in prefixLineDefault' (s.selectedLine, lineWidget)
+
+    composedTogetherHelper :: (Int, Text) -> B.Widget AppName
+    composedTogetherHelper (lineno, lineTxt)
+        | Just lineno == s.interpState.pauseLoc.linenoF = stoppedLineW lineTxt
+        | lineno == s.selectedLine = selectedLineW lineTxt
+        | otherwise =
+            ((\w -> prefixLineDefault' (lineno, w)) . B.txt) lineTxt
+
+    composedTogether :: B.Widget AppName
+    composedTogether =
+        B.vBox
+            ( (\(num, t) -> wrapSelectedLine num $ composedTogetherHelper (num, t))
+                <$> withLineNums splitSourceData
+            )
+      where
+        wrapSelectedLine lineno w =
+            if lineno == s.selectedLine
+                then -- Add highilghting, then mark it as visible in the viewport.
+                    B.visible $ B.modifyDefAttr (`V.withStyle` V.bold) w
+                else w
+        withLineNums = zip [1 ..]
 
 -- | Make the Stopped Line widget (the line where we paused execution)
-makeStoppedLineWidget :: Text -> (Maybe Int, Maybe Int) -> B.Widget AppName
+makeStoppedLineWidget :: Text -> Loc.ColumnRange -> B.Widget AppName
 makeStoppedLineWidget lineData (Nothing, _) =
-    B.withAttr (B.attrName "stop-line") (B.txt lineData)
+    B.forceAttrAllowStyle (B.attrName "stop-line") (B.txt lineData)
 makeStoppedLineWidget lineData (Just startCol, Nothing) =
     makeStoppedLineWidget lineData (Just startCol, Just (startCol + 1))
 makeStoppedLineWidget lineData (Just startCol, Just endCol) =
     let (lineDataBefore, partial) = Data.Text.splitAt (startCol - 1) lineData
         (lineDataRange, lineDataAfter) = Data.Text.splitAt (endCol - startCol + 1) partial
-     in B.withAttr
+     in B.forceAttrAllowStyle
             (B.attrName "stop-line")
             ( B.txt lineDataBefore
-                <+> B.withAttr (B.attrName "underline") (B.txt lineDataRange)
+                <+> B.withAttr (B.attrName "highlight") (B.txt lineDataRange)
                 <+> B.txt lineDataAfter
             )
 
@@ -202,6 +218,12 @@ formatDigits spacing num = pack (replicate left ' ') `append` pack (show num)
   where
     left = spacing - getNumDigits num
 
+selectedModuleLoc :: AppState -> Maybe Loc.ModuleLoc
+selectedModuleLoc s =
+    Loc.toModuleLoc
+        s.interpState.moduleFileMap
+        (Loc.FileLoc s.selectedFile (Just s.selectedLine) (Nothing, Nothing))
+
 handleEvent :: B.BrickEvent AppName e -> B.EventM AppName AppState ()
 handleEvent ev =
     case ev of
@@ -212,20 +234,37 @@ handleEvent ev =
                 B.halt
             | key == V.KChar 's' -> do
                 appState <- B.get
-                newState <- liftIO $ do
-                    interp <- Daemon.step appState.interpState
-                    pure $ appState{interpState = interp}
-                newState <- liftIO $ updateSourceMap newState
+                newState <- appState `runDaemon` Daemon.step
                 B.put newState
-                pure ()
-            | key == V.KDown -> do
-                let scroller = B.viewportScroll CodeViewport
-                B.vScrollBy scroller 1
-                pure ()
-            | key == V.KUp -> do
-                let scroller = B.viewportScroll CodeViewport
-                B.vScrollBy scroller (-1)
-                pure ()
+            | key == V.KChar 'c' -> do
+                appState <- B.get
+                newState <- appState `runDaemon` Daemon.continue
+                B.put newState
+            | key == V.KChar 'b' -> do
+                appState <- B.get
+                let mlM = selectedModuleLoc appState
+                let runner interpState ml =
+                        Daemon.toggleBreakpointLine
+                            interpState
+                            (Daemon.ModLoc ml)
+                case mlM of
+                    Nothing ->
+                        liftIO $
+                            fail
+                                ( "Cannot find module of line: "
+                                    ++ fromMaybe "<unknown>" appState.selectedFile
+                                    ++ ":"
+                                    ++ show appState.selectedLine
+                                )
+                    Just ml -> do
+                        interpState <- liftIO $ runner appState.interpState ml
+                        B.put appState{interpState}
+
+            -- j and k are the vim navigation keybindings.
+            | key `elem` [V.KDown, V.KChar 'j'] -> do
+                moveSelectedLine 1
+            | key `elem` [V.KUp, V.KChar 'k'] -> do
+                moveSelectedLine (-1)
             | key == V.KPageDown -> do
                 let scroller = B.viewportScroll CodeViewport
                 B.vScrollPage scroller B.Down
@@ -235,8 +274,29 @@ handleEvent ev =
                 B.vScrollPage scroller B.Up
                 pure ()
             | key == V.KChar 'x' && ms == [V.MCtrl] -> do
+                -- TODO: Handle live interpreter
                 pure ()
         _ -> pure ()
+  where
+    moveSelectedLine :: Int -> B.EventM a AppState ()
+    moveSelectedLine movAmnt = do
+        appState <- B.get
+        let lineCount = maybe 1 (length . Data.Text.lines) (getSourceContents appState)
+        let newState =
+                appState{selectedLine = B.clamp 1 lineCount (appState.selectedLine + movAmnt)}
+        B.put newState
+        pure ()
+
+    runDaemon
+        :: (MonadIO m)
+        => AppState
+        -> (Daemon.InterpState () -> IO (Daemon.InterpState ()))
+        -> m AppState
+    runDaemon appState f =
+        liftIO $ do
+            interp <- f appState.interpState
+            newState <- updateSourceMap appState{interpState = interp}
+            pure $ resetSelectedLine newState
 
 -- | Brick main program.
 brickApp :: B.App AppState e AppName
@@ -252,8 +312,13 @@ brickApp =
                     V.defAttr
                     [ (B.attrName "stop-line", B.fg V.red)
                     , (B.attrName "line-numbers", B.fg V.cyan)
-                    , (B.attrName "underline", V.currentAttr `V.withStyle` V.underline)
-                    , (B.attrName "styled", B.fg V.magenta)
+                    , (B.attrName "selected-line-numbers", B.fg V.yellow)
+                    , (B.attrName "selected-line", B.bg V.brightBlack)
+                    , (B.attrName "selected-marker", B.fg V.yellow)
+                    , (B.attrName "breakpoint-marker", B.fg V.red)
+                    , (B.attrName "underline", B.style V.underline)
+                    , (B.attrName "styled", B.fg V.magenta `V.withStyle` V.bold)
+                    , (B.attrName "highlight", B.style V.standout)
                     ]
         }
 
@@ -266,14 +331,17 @@ newtype AppStateConfig = AppStateConfig
 -- TODO: This should not be hardcoded for debugging.
 makeInitialState :: AppStateConfig -> Command -> IO AppState
 makeInitialState config cmd = do
-    interpState <-
+    interpState_ <-
         Daemon.startup cmd "."
             >>= flip Daemon.load "app/Main.hs"
             >>= flip Daemon.stepInto "fibty 10"
+    interpState <- Daemon.setBreakpointLine interpState_ (Daemon.LocalLine 41)
     splashContents <- Data.Text.IO.readFile config.startupSplashPath
     pure $
         AppState
             { interpState
+            , selectedLine = 1
+            , selectedFile = Nothing
             , sourceMap = mempty
             , appStateConfig = config
             , splashContents = Just splashContents
