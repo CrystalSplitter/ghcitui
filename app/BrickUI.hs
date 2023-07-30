@@ -10,98 +10,126 @@ import qualified Brick as B
 import qualified Brick.Widgets.Border as B
 import qualified Brick.Widgets.Center as B
 import Brick.Widgets.Core ((<+>), (<=>))
+import qualified Brick.Widgets.Edit as BE
 import Control.Monad.IO.Class (MonadIO (..))
+import Data.List (find)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
-import Data.Text (Text, append, pack)
+import Data.Text (Text, append, pack, unpack)
 import qualified Data.Text
-import qualified Data.Text.IO
+import qualified Data.Text.Zipper as Zipper
 import qualified Graphics.Vty as V
 import Safe (atMay)
 
+import AppState
+    ( ActiveWindow (..)
+    , AppConfig (..)
+    , AppState (..)
+    , AppStateConfig (..)
+    , getSourceContents
+    , liveEditorLens
+    , makeInitialState
+    , resetSelectedLine
+    , toggleActiveLineInterpreter
+    , updateSourceMap
+    )
+import AppTopLevel (AppName (..), Command)
 import qualified Daemon
 import Debug.Trace (trace)
 import qualified Loc
 
-data AppName = GHCiTUI | CodeViewport | LiveInterpreter deriving (Eq, Show, Ord)
+-- | Alias for 'AppState AppName' convenience.
+type AppS = AppState AppName
 
--- | Application state wrapper
-data AppState = AppState
-    { interpState :: Daemon.InterpState ()
-    , selectedFile :: Maybe FilePath
-    , selectedLine :: Int
-    , sourceMap :: Map.Map FilePath Text
-    -- ^ Mapping between source filepaths and their contents.
-    , appStateConfig :: AppStateConfig
-    -- ^ Program launch configuration
-    , splashContents :: Maybe Text
-    }
-
-resetSelectedLine :: AppState -> AppState
-resetSelectedLine s@AppState{interpState} = s{selectedFile, selectedLine}
-  where
-    selectedLine = fromMaybe 1 interpState.pauseLoc.linenoF
-    selectedFile = interpState.pauseLoc.filepath
-
--- | Update the source map given any app state changes.
-updateSourceMap :: AppState -> IO AppState
-updateSourceMap s =
-    case s.interpState.pauseLoc.filepath of
-        Nothing -> pure s
-        (Just filepath) -> updateSourceMapWithFilepath s filepath
-
--- | Update the source map with a given filepath.
-updateSourceMapWithFilepath :: AppState -> FilePath -> IO AppState
-updateSourceMapWithFilepath s filepath
-    | Map.member filepath s.sourceMap = pure s
-    | otherwise = do
-        contents <- Data.Text.IO.readFile filepath
-        let newSourceMap = Map.insert filepath contents s.sourceMap
-        pure $ s{sourceMap = newSourceMap}
-
-appDraw :: AppState -> [B.Widget AppName]
+appDraw :: AppS -> [B.Widget AppName]
 appDraw s =
-    [ ( B.borderWithLabel
-            (B.txt ("Source: " `append` maybe "?" pack (s.interpState.pauseLoc.filepath)))
-            ( B.withVScrollBars
-                B.OnRight
-                ( B.viewport
-                    CodeViewport
-                    B.Vertical
-                    ( B.padRight B.Max (makeCodeViewport s)
+    let
+        sourceLabel =
+            markLabel
+                (s.activeWindow == ActiveCodeViewport)
+                ("Source: " `append` maybe "?" pack (s.interpState.pauseLoc.filepath))
+        interpreterLabel =
+            markLabel (s.activeWindow == ActiveLiveInterpreter) "Interpreter"
+        viewportBox =
+            B.borderWithLabel sourceLabel
+                . B.withVScrollBars B.OnRight
+                . B.viewport CodeViewport B.Vertical
+                . B.padRight B.Max
+                $ codeViewportDraw s
+
+        interpreterBox =
+            B.borderWithLabel
+                interpreterLabel
+                $ let enableCursor = True
+                      displayLimit = 5
+                      displayF t = B.vBox $ B.txt <$> t
+                      previousOutput =
+                        B.vLimit displayLimit
+                        . B.padTop B.Max
+                        . B.txt
+                        . Data.Text.unlines
+                        . reverse
+                        . take displayLimit
+                        $ if null s.interpLogs
+                            then [" "]
+                            else s.interpLogs
+                      promptLine =
+                        B.txt s.appConfig.interpreterPrompt
+                            <+> BE.renderEditor displayF enableCursor s.liveEditor
+                   in previousOutput <=> promptLine
+        infoBox =
+            B.borderWithLabel
+                (B.txt "Info")
+                ( B.padBottom
+                    B.Max
+                    ( B.padLeft
+                        (B.Pad 20)
+                        (B.txt " ") -- Important that there's a space here for padding.
                     )
                 )
-            )
-            -- TODO: Make this an editor viewport.
-            <=> B.borderWithLabel
-                (B.txt "Interpreter")
-                (B.padRight B.Max (B.txt " >>> "))
-      )
-        -- TODO: Make this an expandable viewport, maybe?
-        <+> B.borderWithLabel
-            (B.txt "Info")
-            ( B.padBottom
-                B.Max
-                ( B.padLeft
-                    (B.Pad 20)
-                    (B.txt " ") -- Important that there's a space here for padding.
-                )
-            )
-    ]
+        debugBox =
+            if s.displayDebugConsoleLogs
+                then
+                    let logDisplay =
+                            if null s.debugConsoleLogs then [" "] else s.debugConsoleLogs
+                     in B.borderWithLabel (B.txt "Debug") $
+                            B.withVScrollBars B.OnRight $
+                                B.padRight B.Max $
+                                    B.txt $
+                                        Data.Text.unlines $
+                                            reverse logDisplay
+                else B.emptyWidget
+     in
+        [ (viewportBox <=> interpreterBox <=> debugBox)
+            -- TODO: Make this an expandable viewport, maybe?
+            <+> infoBox
+        ]
 
+-- | Mark the label if the first arg is True.
+markLabel :: Bool -> Text -> B.Widget a
+markLabel False labelTxt = B.txt labelTxt
+markLabel True labelTxt =
+    B.withAttr (B.attrName "highlight") (B.txt ("#>" `append` labelTxt `append` "<#"))
+
+-- | Information used to compute the gutter status of each line.
 data GutterInfo = GutterInfo
     { isStoppedHere :: !Bool
+    -- ^ Is the interpreter stopped/paused here?
     , isBreakpoint :: !Bool
+    -- ^ Is there a breakpoint here?
     , isSelected :: !Bool
+    -- ^ Is this line currently selected by the user?
     , gutterLineNumber :: !Int
+    -- ^ What line number is this?
     , gutterDigitWidth :: !Int
+    -- ^ How many columns is the gutter line number?
     }
 
 -- | Prepend gutter information on each line in the primary viewport.
 prependGutter :: GutterInfo -> B.Widget n -> B.Widget n
 prependGutter gi line = makeGutter gi <+> line
 
--- | Prepend gutter information on each line in the primary viewport.
+-- | Create the gutter section for a given line (formed from GutterInfo).
 makeGutter :: GutterInfo -> B.Widget n
 makeGutter GutterInfo{..} =
     lineNoWidget <+> spaceW <+> stopColumn <+> breakColumn <+> spaceW
@@ -119,25 +147,22 @@ makeGutter GutterInfo{..} =
         | isStoppedHere = B.withAttr (B.attrName "stop-line") (B.txt "!")
         | otherwise = spaceW
 
--- | Return the potential contents of the current paused file location.
-getSourceContents :: AppState -> Maybe Text
-getSourceContents s = s.selectedFile >>= (s.sourceMap Map.!?)
-
 -- | Make the primary viewport widget.
-makeCodeViewport :: AppState -> B.Widget AppName
-makeCodeViewport s =
+codeViewportDraw :: AppS -> B.Widget AppName
+codeViewportDraw s =
     let sourceDataMaybe = getSourceContents s
+        noSourceWidget =
+            B.padTop (B.Pad 3) $
+                B.hCenter $
+                    B.withAttr (B.attrName "styled") $
+                        maybe (B.txt "No source file loaded") B.txt s.splashContents
      in case sourceDataMaybe of
-            Nothing ->
-                B.padTop (B.Pad 3) $
-                    B.hCenter $
-                        B.withAttr (B.attrName "styled") $
-                            maybe (B.txt "No source file loaded") B.txt s.splashContents
-            Just sourceData -> makeCodeViewport' s sourceData
+            Nothing -> noSourceWidget
+            Just sourceData -> codeViewportDraw' s sourceData
 
 -- | Viewport when we have source contents.
-makeCodeViewport' :: AppState -> Text -> B.Widget AppName
-makeCodeViewport' s sourceData = composedTogether
+codeViewportDraw' :: AppS -> Text -> B.Widget AppName
+codeViewportDraw' s sourceData = composedTogether
   where
     splitSourceData = Data.Text.lines sourceData
     breakpoints = Daemon.getBpInCurModule s.interpState
@@ -162,9 +187,12 @@ makeCodeViewport' s sourceData = composedTogether
 
     selectedLineW :: Text -> B.Widget AppName
     selectedLineW lineTxt =
-        let lineWidget = B.txt $ Data.Text.replace " " " " lineTxt
+        let transform = id -- Potentialy useful for highlighting spaces?
+            lineWidget = B.txt $ transform lineTxt
          in prefixLineDefault' (s.selectedLine, lineWidget)
 
+    -- Select which line widget we want to draw based on both the interpreter
+    -- state and the app state.
     composedTogetherHelper :: (Int, Text) -> B.Widget AppName
     composedTogetherHelper (lineno, lineTxt)
         | Just lineno == s.interpState.pauseLoc.linenoF = stoppedLineW lineTxt
@@ -218,14 +246,59 @@ formatDigits spacing num = pack (replicate left ' ') `append` pack (show num)
   where
     left = spacing - getNumDigits num
 
-selectedModuleLoc :: AppState -> Maybe Loc.ModuleLoc
+selectedModuleLoc :: AppState n -> Maybe Loc.ModuleLoc
 selectedModuleLoc s =
     Loc.toModuleLoc
         s.interpState.moduleFileMap
         (Loc.FileLoc s.selectedFile (Just s.selectedLine) (Nothing, Nothing))
 
-handleEvent :: B.BrickEvent AppName e -> B.EventM AppName AppState ()
-handleEvent ev =
+-- | Handle any Brick event and update the state.
+handleEvent :: B.BrickEvent AppName e -> B.EventM AppName AppS ()
+handleEvent ev = do
+    appState <- B.get
+    case appState.activeWindow of
+        ActiveCodeViewport -> handleViewportEvent ev
+        ActiveLiveInterpreter -> handleInterpreterEvent ev
+        _ -> pure ()
+
+-- | Handle events when the interpreter (live GHCi) is selected.
+handleInterpreterEvent :: B.BrickEvent AppName e -> B.EventM AppName AppS ()
+handleInterpreterEvent ev =
+    case ev of
+        B.VtyEvent (V.EvKey V.KEnter []) -> do
+            appState <- B.get
+            let AppState{liveEditor, interpState, debugConsoleLogs, interpLogs} = appState
+            let cmd = Data.Text.strip . Data.Text.unlines . BE.getEditContents $ liveEditor
+            (newInterpState, output) <-
+                liftIO $
+                    Daemon.execCleaned interpState (unpack cmd)
+            let newEditor = BE.applyEdit (Zipper.killToEOF . Zipper.gotoBOF) liveEditor
+            -- TODO: Should be configurable?
+            let interpreterLogLimit = 1000
+            let formattedWithPrompt = appState.appConfig.interpreterPrompt `append` cmd
+            let combinedLogs = (pack <$> reverse output) ++ formattedWithPrompt : interpLogs
+            B.put
+                appState
+                    { debugConsoleLogs = "Handled Enter" : debugConsoleLogs
+                    , interpState = newInterpState
+                    , liveEditor = newEditor
+                    , interpLogs =
+                        take interpreterLogLimit combinedLogs
+                    }
+        B.VtyEvent (V.EvKey (V.KChar 'x') [V.MCtrl]) ->
+            -- Toggle out of the interpreter.
+            leaveInterpreter
+        B.VtyEvent (V.EvKey V.KEsc _) ->
+            -- Also toggle out of the interpreter.
+            leaveInterpreter
+        ev' -> do
+            -- Actually handle text input commands.
+            B.zoom liveEditorLens $ BE.handleEditorEvent ev'
+  where
+    leaveInterpreter = B.put . toggleActiveLineInterpreter =<< B.get
+
+handleViewportEvent :: B.BrickEvent AppName e -> B.EventM AppName (AppState n) ()
+handleViewportEvent ev =
     case ev of
         B.VtyEvent (V.EvKey key ms)
             | key == V.KChar 'q' -> do
@@ -242,12 +315,7 @@ handleEvent ev =
                 B.put newState
             | key == V.KChar 'b' -> do
                 appState <- B.get
-                let mlM = selectedModuleLoc appState
-                let runner interpState ml =
-                        Daemon.toggleBreakpointLine
-                            interpState
-                            (Daemon.ModLoc ml)
-                case mlM of
+                case selectedModuleLoc appState of
                     Nothing ->
                         liftIO $
                             fail
@@ -257,7 +325,11 @@ handleEvent ev =
                                     ++ show appState.selectedLine
                                 )
                     Just ml -> do
-                        interpState <- liftIO $ runner appState.interpState ml
+                        interpState <-
+                            liftIO $
+                                Daemon.toggleBreakpointLine
+                                    appState.interpState
+                                    (Daemon.ModLoc ml)
                         B.put appState{interpState}
 
             -- j and k are the vim navigation keybindings.
@@ -268,17 +340,15 @@ handleEvent ev =
             | key == V.KPageDown -> do
                 let scroller = B.viewportScroll CodeViewport
                 B.vScrollPage scroller B.Down
-                pure ()
             | key == V.KPageUp -> do
                 let scroller = B.viewportScroll CodeViewport
                 B.vScrollPage scroller B.Up
-                pure ()
-            | key == V.KChar 'x' && ms == [V.MCtrl] -> do
-                -- TODO: Handle live interpreter
-                pure ()
+            | key == V.KChar 'x' && ms == [V.MCtrl] ->
+                B.put . toggleActiveLineInterpreter =<< B.get
+        -- TODO: Mouse support here?
         _ -> pure ()
   where
-    moveSelectedLine :: Int -> B.EventM a AppState ()
+    moveSelectedLine :: Int -> B.EventM a (AppState n) ()
     moveSelectedLine movAmnt = do
         appState <- B.get
         let lineCount = maybe 1 (length . Data.Text.lines) (getSourceContents appState)
@@ -289,21 +359,37 @@ handleEvent ev =
 
     runDaemon
         :: (MonadIO m)
-        => AppState
+        => AppState n
         -> (Daemon.InterpState () -> IO (Daemon.InterpState ()))
-        -> m AppState
+        -> m (AppState n)
     runDaemon appState f =
         liftIO $ do
             interp <- f appState.interpState
             newState <- updateSourceMap appState{interpState = interp}
             pure $ resetSelectedLine newState
 
+handleCursorPosition
+    :: AppS
+    -- ^ State of the app.
+    -> [B.CursorLocation AppName]
+    -- ^ Potential Locs
+    -> Maybe (B.CursorLocation AppName)
+    -- ^ The chosen cursor location if any.
+handleCursorPosition s ls =
+    if s.activeWindow == ActiveLiveInterpreter
+        then -- If we're in the interpreter window, show the cursor.
+
+            let widgetName = LiveInterpreter
+             in B.showCursorNamed widgetName ls
+        else -- No cursor
+            Nothing
+
 -- | Brick main program.
-brickApp :: B.App AppState e AppName
+brickApp :: B.App AppS e AppName
 brickApp =
     B.App
         { B.appDraw = appDraw
-        , B.appChooseCursor = B.neverShowCursor
+        , B.appChooseCursor = handleCursorPosition
         , B.appHandleEvent = handleEvent
         , B.appStartEvent = pure ()
         , B.appAttrMap =
@@ -321,31 +407,6 @@ brickApp =
                     , (B.attrName "highlight", B.style V.standout)
                     ]
         }
-
-type Command = String
-
-newtype AppStateConfig = AppStateConfig
-    { startupSplashPath :: FilePath
-    }
-
--- TODO: This should not be hardcoded for debugging.
-makeInitialState :: AppStateConfig -> Command -> IO AppState
-makeInitialState config cmd = do
-    interpState_ <-
-        Daemon.startup cmd "."
-            >>= flip Daemon.load "app/Main.hs"
-            >>= flip Daemon.stepInto "fibty 10"
-    interpState <- Daemon.setBreakpointLine interpState_ (Daemon.LocalLine 41)
-    splashContents <- Data.Text.IO.readFile config.startupSplashPath
-    pure $
-        AppState
-            { interpState
-            , selectedLine = 1
-            , selectedFile = Nothing
-            , sourceMap = mempty
-            , appStateConfig = config
-            , splashContents = Just splashContents
-            }
 
 -- | Start the Brick UI
 launchBrick :: IO ()

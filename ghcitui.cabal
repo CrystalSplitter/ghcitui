@@ -26,8 +26,12 @@ executable ghcitui
                         , ghcituilib
                         , vty
                         , safe
+                        , microlens ^>= 0.4.13.1
+                        , text-zipper ^>= 0.13
     hs-source-dirs:     app
     other-modules:      BrickUI
+                        , AppState
+                        , AppTopLevel
     ghc-options:        -rtsopts
                         -threaded
                         -Wall
@@ -40,7 +44,6 @@ executable ghcitui
                         DuplicateRecordFields
                         OverloadedStrings
                         RecordWildCards
-                        
 
 library ghcituilib
     hs-source-dirs:    lib
@@ -56,8 +59,8 @@ library ghcituilib
     exposed-modules:   Daemon
                        , Tui
                        , Loc
-    other-modules:     ParseContext
                        , StringUtil
+    other-modules:     ParseContext
     ghc-options:       -rtsopts
                        -threaded
                        -Wall

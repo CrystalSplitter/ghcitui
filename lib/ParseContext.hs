@@ -129,8 +129,8 @@ parseShowBreaks t
             enabled = case mr.mrSubs ! 7 of
                 "enabled" -> Right True
                 "disabled" -> Right False
-                x -> Left ("Breakpoint neither enabled nor disabled: " ++ unpack x)
-            in Right (idx, Loc.ModuleLoc module_ lineno' (colStart, colEnd))
+                x -> Left ("Breakpoint neither enabled nor disabled: " `append` x)
+            in enabled >> Right (idx, Loc.ModuleLoc module_ lineno' (colStart, colEnd))
 
 
 parseShowModules :: Text -> Either Text [(Text, FilePath)]

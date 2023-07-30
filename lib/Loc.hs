@@ -35,7 +35,7 @@ instance Semigroup ModuleFileMap where
     ModuleFileMap a <> ModuleFileMap b = ModuleFileMap (a <> b)
 
 instance Monoid ModuleFileMap where
-    mempty = ModuleFileMap []
+    mempty = ModuleFileMap mempty
 
 -- | Convert a module to a FilePath
 getPathOfModule :: ModuleFileMap -> Text -> Maybe FilePath
