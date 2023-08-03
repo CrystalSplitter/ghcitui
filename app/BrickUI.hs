@@ -12,14 +12,14 @@ import qualified Brick.Widgets.Center as B
 import Brick.Widgets.Core ((<+>), (<=>))
 import qualified Brick.Widgets.Edit as BE
 import Control.Monad.IO.Class (MonadIO (..))
-import Data.List (find)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, append, pack, unpack)
 import qualified Data.Text
 import qualified Data.Text.Zipper as Zipper
 import qualified Graphics.Vty as V
-import Safe (atMay)
+import Safe (atMay, headMay)
+import qualified Util
 
 import AppState
     ( ActiveWindow (..)
@@ -37,6 +37,7 @@ import AppTopLevel (AppName (..), Command)
 import qualified Daemon
 import Debug.Trace (trace)
 import qualified Loc
+import qualified NameBinding
 
 -- | Alias for 'AppState AppName' convenience.
 type AppS = AppState AppName
@@ -50,8 +51,13 @@ appDraw s =
                 ("Source: " `append` maybe "?" pack (s.interpState.pauseLoc.filepath))
         interpreterLabel =
             markLabel (s.activeWindow == ActiveLiveInterpreter) "Interpreter"
+        appendLastCommand w =
+            case headMay s.interpState.execHist of
+                Just h -> B.padBottom B.Max (w <=> B.hBorder <=> B.str h)
+                _ -> w
         viewportBox =
             B.borderWithLabel sourceLabel
+                . appendLastCommand
                 . B.withVScrollBars B.OnRight
                 . B.viewport CodeViewport B.Vertical
                 . B.padRight B.Max
@@ -60,33 +66,39 @@ appDraw s =
         interpreterBox =
             B.borderWithLabel
                 interpreterLabel
-                $ let enableCursor = True
-                      displayLimit = 5
-                      displayF t = B.vBox $ B.txt <$> t
-                      previousOutput =
-                        B.vLimit displayLimit
-                        . B.padTop B.Max
-                        . B.txt
-                        . Data.Text.unlines
-                        . reverse
-                        . take displayLimit
-                        $ if null s.interpLogs
-                            then [" "]
-                            else s.interpLogs
-                      promptLine =
+                $ let
+                    enableCursor = True
+                    displayLimit = 20
+                    displayF t = B.vBox $ B.txt <$> t
+                    previousOutput =
+                        B.txt
+                            . Data.Text.unlines
+                            . reverse
+                            $ if null s.interpLogs
+                                then [" "]
+                                else s.interpLogs
+                    promptLine =
                         B.txt s.appConfig.interpreterPrompt
                             <+> BE.renderEditor displayF enableCursor s.liveEditor
-                   in previousOutput <=> promptLine
+                    lockToBottom w =
+                        if s.liveInterpreterViewLock
+                            then B.visible w
+                            else w
+                   in
+                    B.vLimit
+                        (displayLimit + 1)
+                        ( B.withVScrollBars B.OnRight
+                            . B.viewport LiveInterpreterViewport B.Vertical
+                            $ (previousOutput <=> lockToBottom promptLine)
+                        )
         infoBox =
-            B.borderWithLabel
-                (B.txt "Info")
-                ( B.padBottom
-                    B.Max
-                    ( B.padLeft
-                        (B.Pad 20)
-                        (B.txt " ") -- Important that there's a space here for padding.
-                    )
-                )
+            B.borderWithLabel (B.txt "Info")
+                . B.hLimit 50
+                . B.padBottom B.Max
+                . B.padRight B.Max
+                $ case NameBinding.renderNamesTxt s.interpState.bindings of
+                    [] -> B.emptyWidget
+                    bs -> B.vBox (B.txt <$> bs)
         debugBox =
             if s.displayDebugConsoleLogs
                 then
@@ -137,7 +149,7 @@ makeGutter GutterInfo{..} =
     spaceW = B.txt " "
     lineNoWidget =
         let attr = B.attrName (if isSelected then "selected-line-numbers" else "line-numbers")
-         in B.withAttr attr (B.txt (formatDigits gutterDigitWidth gutterLineNumber))
+         in B.withAttr attr (B.txt (Util.formatDigits gutterDigitWidth gutterLineNumber))
     breakColumn
         | isSelected && isBreakpoint = B.withAttr (B.attrName "selected-marker") (B.txt "@")
         | isSelected = B.withAttr (B.attrName "selected-marker") (B.txt ">")
@@ -171,7 +183,7 @@ codeViewportDraw' s sourceData = composedTogether
             { isStoppedHere = Just lineno == s.interpState.pauseLoc.linenoF
             , isBreakpoint = lineno `elem` breakpoints
             , gutterLineNumber = lineno
-            , gutterDigitWidth = getNumDigits $ length splitSourceData
+            , gutterDigitWidth = Util.getNumDigits $ length splitSourceData
             , isSelected = lineno == s.selectedLine
             }
     prefixLineDefault' (lineno, w) =
@@ -209,7 +221,7 @@ codeViewportDraw' s sourceData = composedTogether
       where
         wrapSelectedLine lineno w =
             if lineno == s.selectedLine
-                then -- Add highilghting, then mark it as visible in the viewport.
+                then -- Add highlighting, then mark it as visible in the viewport.
                     B.visible $ B.modifyDefAttr (`V.withStyle` V.bold) w
                 else w
         withLineNums = zip [1 ..]
@@ -230,22 +242,7 @@ makeStoppedLineWidget lineData (Just startCol, Just endCol) =
                 <+> B.txt lineDataAfter
             )
 
--- Return the number of digits in a given integral
-getNumDigits :: (Integral a) => a -> Int
-getNumDigits 0 = 1
-getNumDigits num = truncate (logBase 10 (fromIntegral num) :: Double) + 1
-
-formatDigits
-    :: Int
-    -- ^ Number of spaces
-    -> Int
-    -- ^ Number to format digits of
-    -> Text
-    -- ^ Formatted Text
-formatDigits spacing num = pack (replicate left ' ') `append` pack (show num)
-  where
-    left = spacing - getNumDigits num
-
+-- | Get Location that's currently selected.
 selectedModuleLoc :: AppState n -> Maybe Loc.ModuleLoc
 selectedModuleLoc s =
     Loc.toModuleLoc
@@ -267,31 +264,40 @@ handleInterpreterEvent ev =
     case ev of
         B.VtyEvent (V.EvKey V.KEnter []) -> do
             appState <- B.get
-            let AppState{liveEditor, interpState, debugConsoleLogs, interpLogs} = appState
+            let AppState{liveEditor, debugConsoleLogs, interpLogs} = appState
             let cmd = Data.Text.strip . Data.Text.unlines . BE.getEditContents $ liveEditor
-            (newInterpState, output) <-
-                liftIO $
-                    Daemon.execCleaned interpState (unpack cmd)
+            (newAppState, output) <- runDaemon2 (\s -> Daemon.execCleaned s (unpack cmd)) appState
             let newEditor = BE.applyEdit (Zipper.killToEOF . Zipper.gotoBOF) liveEditor
             -- TODO: Should be configurable?
             let interpreterLogLimit = 1000
             let formattedWithPrompt = appState.appConfig.interpreterPrompt `append` cmd
             let combinedLogs = (pack <$> reverse output) ++ formattedWithPrompt : interpLogs
             B.put
-                appState
-                    { debugConsoleLogs = "Handled Enter" : debugConsoleLogs
-                    , interpState = newInterpState
-                    , liveEditor = newEditor
-                    , interpLogs =
-                        take interpreterLogLimit combinedLogs
-                    }
+                =<< liftIO
+                    ( updateSourceMap
+                        newAppState
+                            { debugConsoleLogs = "Handled Enter" : debugConsoleLogs
+                            , liveEditor = newEditor
+                            , interpLogs =
+                                take interpreterLogLimit combinedLogs
+                            , liveInterpreterViewLock = True
+                            }
+                    )
         B.VtyEvent (V.EvKey (V.KChar 'x') [V.MCtrl]) ->
             -- Toggle out of the interpreter.
             leaveInterpreter
         B.VtyEvent (V.EvKey V.KEsc _) ->
             -- Also toggle out of the interpreter.
             leaveInterpreter
+        B.VtyEvent (V.EvKey V.KPageDown _) ->
+            B.vScrollPage (B.viewportScroll LiveInterpreterViewport) B.Down
+        B.VtyEvent (V.EvKey V.KPageUp _) -> do
+            B.vScrollPage (B.viewportScroll LiveInterpreterViewport) B.Up
+            appState <- B.get
+            B.put appState { liveInterpreterViewLock = False }
         ev' -> do
+            appState <- B.get
+            B.put appState { liveInterpreterViewLock = True }
             -- Actually handle text input commands.
             B.zoom liveEditorLens $ BE.handleEditorEvent ev'
   where
@@ -307,11 +313,11 @@ handleViewportEvent ev =
                 B.halt
             | key == V.KChar 's' -> do
                 appState <- B.get
-                newState <- appState `runDaemon` Daemon.step
+                newState <- Daemon.step `runDaemon` appState
                 B.put newState
             | key == V.KChar 'c' -> do
                 appState <- B.get
-                newState <- appState `runDaemon` Daemon.continue
+                newState <- Daemon.continue `runDaemon` appState
                 B.put newState
             | key == V.KChar 'b' -> do
                 appState <- B.get
@@ -357,16 +363,27 @@ handleViewportEvent ev =
         B.put newState
         pure ()
 
-    runDaemon
-        :: (MonadIO m)
-        => AppState n
-        -> (Daemon.InterpState () -> IO (Daemon.InterpState ()))
-        -> m (AppState n)
-    runDaemon appState f =
-        liftIO $ do
-            interp <- f appState.interpState
-            newState <- updateSourceMap appState{interpState = interp}
-            pure $ resetSelectedLine newState
+runDaemon
+    :: (MonadIO m)
+    => (Daemon.InterpState () -> IO (Daemon.InterpState ()))
+    -> AppState n
+    -> m (AppState n)
+runDaemon f appState =
+    liftIO $ do
+        interp <- f appState.interpState
+        newState <- updateSourceMap appState{interpState = interp}
+        pure (resetSelectedLine newState)
+
+runDaemon2
+    :: (MonadIO m)
+    => (Daemon.InterpState () -> IO (Daemon.InterpState (), a))
+    -> AppState n
+    -> m (AppState n, a)
+runDaemon2 f appState =
+    liftIO $ do
+        (interp, x) <- f appState.interpState
+        newState <- updateSourceMap appState{interpState = interp}
+        pure (resetSelectedLine newState, x)
 
 handleCursorPosition
     :: AppS

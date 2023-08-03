@@ -1,15 +1,15 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
-module AppState (
-    ActiveWindow(..)
-    , AppConfig(..)
-    , AppState(..)
+module AppState
+    ( ActiveWindow (..)
+    , AppConfig (..)
+    , AppState (..)
     , getSourceContents
     , updateSourceMap
     , liveEditorLens
     , resetSelectedLine
     , makeInitialState
-    , AppStateConfig(..)
+    , AppStateConfig (..)
     , toggleActiveLineInterpreter
     , toggleBreakpointLine
     ) where
@@ -22,9 +22,9 @@ import qualified Data.Text.IO
 import qualified Lens.Micro as Lens
 
 import AppTopLevel (AppName (..), Command)
+import Daemon (toggleBreakpointLine)
 import qualified Daemon
 import qualified Loc
-import Daemon (toggleBreakpointLine)
 
 data ActiveWindow = ActiveCodeViewport | ActiveLiveInterpreter | ActiveInfoWindow
     deriving (Show, Eq, Ord)
@@ -32,7 +32,8 @@ data ActiveWindow = ActiveCodeViewport | ActiveLiveInterpreter | ActiveInfoWindo
 newtype AppConfig = AppConfig
     { interpreterPrompt :: Text
     -- ^ Prompt to show for the live interpreter.
-    } deriving (Eq, Show)
+    }
+    deriving (Eq, Show)
 
 -- | Application state wrapper
 data AppState n = AppState
@@ -57,6 +58,8 @@ data AppState n = AppState
     -- ^ Place for debug output to go.
     , splashContents :: !(Maybe Text)
     -- ^ Splash to show on start up.
+    , liveInterpreterViewLock :: !Bool
+    -- ^ Lock the live interpreter view to the bottom.
     }
 
 -- | Lens wrapper for zooming with handleEditorEvent.
@@ -127,13 +130,15 @@ makeInitialState config cmd = do
             , selectedFile = Nothing
             , sourceMap = mempty
             , appStateConfig = config
-            , appConfig = AppConfig {
-                interpreterPrompt = "ghci> "
-                }
+            , appConfig =
+                AppConfig
+                    { interpreterPrompt = "ghci> "
+                    }
             , activeWindow = ActiveCodeViewport
             , liveEditor = initInterpWidget LiveInterpreter (Just 1)
             , interpLogs = []
             , displayDebugConsoleLogs = False
             , debugConsoleLogs = mempty
             , splashContents = Just splashContents
+            , liveInterpreterViewLock = True
             }

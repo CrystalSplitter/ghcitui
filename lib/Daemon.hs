@@ -24,7 +24,6 @@ module Daemon
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (..))
 import qualified Data.Bifunctor as Bifunctor
-import qualified Data.Map.Strict as Map
 import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import Data.String.Interpolate (i)
 import qualified Data.Text as Text
@@ -32,6 +31,7 @@ import qualified Data.Text.IO as Text
 import qualified Language.Haskell.Ghcid as Ghcid
 
 import qualified Loc
+import qualified NameBinding
 import qualified ParseContext
 import Safe
 
@@ -52,12 +52,16 @@ data InterpState a = InterpState
     -- ^ Program stack (only available during tracing)
     , breakpoints :: [(Int, Loc.ModuleLoc)]
     -- ^ Currently set breakpoint locations.
+    , bindings :: [NameBinding.NameBinding Text.Text]
+    -- ^ Current context value bindings.
     , status :: Either Text.Text a
     -- ^ IDK? I had an idea here at one point.
     , logLevel :: LogLevel
     -- ^ How much should we log?
     , logOutput :: LogOutput
     -- ^ Where should we log to?
+    , execHist :: [String]
+    -- ^ What's the execution history?
     }
 
 instance Show (InterpState a) where
@@ -73,12 +77,17 @@ emptyInterpreterState ghci =
         , func = Nothing
         , pauseLoc = Loc.FileLoc Nothing Nothing (Nothing, Nothing)
         , moduleFileMap = mempty
-        , stack = []
+        , stack = mempty
         , breakpoints = mempty
+        , bindings = mempty
         , status = Right mempty
         , logLevel = LogLevel 3
         , logOutput = LogOutputFile "/tmp/ghcitui.log"
+        , execHist = mempty
         }
+
+appendExecHist :: String -> InterpState a -> InterpState a
+appendExecHist cmd s@InterpState{execHist} = s{execHist = cmd : execHist}
 
 -- | Start up the GHCI Daemon
 startup
@@ -92,17 +101,21 @@ startup cmd pwd = do
     (ghci, _) <- Ghcid.startGhci cmd (Just pwd) (\_ _ -> pure ())
     pure $ emptyInterpreterState ghci
 
+-- | Shutdown ghcid.
 quit :: InterpState a -> IO (InterpState a)
 quit state = do
     Ghcid.quit (state._ghci)
     pure state
 
+-- | Update the interpreter state. Wrapper around other updaters.
 updateState :: (Monoid a) => InterpState a -> IO (InterpState a)
-updateState state_1@InterpState{_ghci} = do
-    state_2 <- updateContext state_1
-    state_3 <- updateModuleFileMap state_2
-    updateBreakList state_3
+updateState state =
+    updateContext state
+        >>= updateBindings
+        >>= updateModuleFileMap
+        >>= updateBreakList
 
+-- | Update the current interpreter context.
 updateContext :: (Monoid a) => InterpState a -> IO (InterpState a)
 updateContext state@InterpState{_ghci} = do
     logDebug state "|updateContext| CMD: :show context\n"
@@ -124,6 +137,22 @@ updateContext state@InterpState{_ghci} = do
                     , pauseLoc = Loc.FileLoc ctx.filepath ctx.lineno ctx.colrange
                     }
 
+-- | Update the current local bindings.
+updateBindings :: InterpState a -> IO (InterpState a)
+updateBindings state@InterpState{_ghci} = do
+    logDebug state "|updateBindings| CMD: :show bindings\n"
+    msgs <- Ghcid.exec _ghci ":show bindings"
+    let feedback = ParseContext.cleanResponse msgs
+    logDebug
+        state
+        ( "|updateBindings| OUT:\n"
+            `Text.append` ParseContext.linesToText msgs
+            `Text.append` "\n"
+        )
+    case ParseContext.parseBindings feedback of
+        Right bindings -> pure (state{bindings})
+        _ -> error "Failed to updateBindings"
+
 -- | Update the source map given any app state changes.
 updateModuleFileMap :: InterpState a -> IO (InterpState a)
 updateModuleFileMap state@InterpState{_ghci} = do
@@ -131,6 +160,7 @@ updateModuleFileMap state@InterpState{_ghci} = do
     let moduleFileMap = Loc.ModuleFileMap $ Bifunctor.first Text.pack <$> modules
     pure $ state{moduleFileMap}
 
+-- | Analogue to ":step".
 step :: (Monoid a) => InterpState a -> IO (InterpState a)
 step state = execMuted state ":step"
 
@@ -144,11 +174,11 @@ stepInto
     -- ^ New interpreter state
 stepInto state func = execMuted state (":step " ++ func)
 
--- | Analogue to ":continue".
+-- | Analogue to ":continue". Throws out any messages.
 continue :: (Monoid a) => InterpState a -> IO (InterpState a)
 continue state = execMuted state ":continue"
 
--- | Analogue to ":load <filepath>"
+-- | Analogue to ":load <filepath>". Throws out any messages.
 load :: (Monoid a) => InterpState a -> FilePath -> IO (InterpState a)
 load state filepath = execMuted state (":l " ++ filepath)
 
@@ -163,7 +193,7 @@ exec state@InterpState{_ghci} cmd = do
             `Text.append` ParseContext.linesToText msgs
             `Text.append` "\n"
         )
-    newState <- updateState state
+    newState <- updateState $ appendExecHist cmd state
     pure (newState, msgs)
 
 -- | @exec@, but throw out any messages.
@@ -176,7 +206,7 @@ execMuted state cmd = do
 execCleaned :: (Monoid a) => InterpState a -> String -> IO (InterpState a, [String])
 execCleaned state cmd = do
     res <- cleaner <$> exec state cmd
-    logDebug state ( "|cleaned|:\n" `Text.append` (Text.pack . unlines . snd $ res))
+    logDebug state ("|cleaned|:\n" `Text.append` (Text.pack . unlines . snd $ res))
     pure res
   where
     cleaner (s, ls) = (s, Text.unpack <$> (Text.lines . ParseContext.cleanResponse) ls)
@@ -249,10 +279,11 @@ deleteBreakpointLine state loc =
             Nothing -> do
                 logDebug
                     state
-                    ( Text.pack $ "No breakpoint at "
-                        ++ show loc
-                        ++ "; breakpoints are found at "
-                        ++ show state.breakpoints
+                    ( Text.pack $
+                        "No breakpoint at "
+                            ++ show loc
+                            ++ "; breakpoints are found at "
+                            ++ show state.breakpoints
                     )
                 pure state
 

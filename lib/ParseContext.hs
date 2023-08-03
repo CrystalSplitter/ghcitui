@@ -1,11 +1,11 @@
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE QuasiQuotes #-}
-
 module ParseContext
     ( ParseContextOut (..)
+    , NameBinding (..)
+    , BindingValue (..)
     , linesToText
     , parseContext
     , parseBreakResponse
+    , parseBindings
     , parseShowBreaks
     , cleanResponse
     ) where
@@ -16,12 +16,11 @@ import Data.Array ((!))
 import Data.Functor ((<&>))
 import Data.Maybe (isJust)
 import Data.Text (Text, append, dropWhileEnd, lines, null, pack, strip, stripStart, unpack)
-import Safe (atMay, headMay, lastDef, readEitherSafe, readMay)
+import Safe (atMay, headMay, lastDef, readMay, readNote)
 import Text.Regex.TDFA (MatchResult (..), (=~~))
 
-import Debug.Trace
-
 import qualified Loc
+import NameBinding
 import StringUtil
 
 ghcidPrompt :: Text
@@ -32,10 +31,10 @@ linesToText = pack . unlines
 
 -- | Output record datatype for @parseContext@.
 data ParseContextOut = ParseContextOut
-    { func :: Maybe Text
-    , filepath :: Maybe FilePath
-    , lineno :: Maybe Int
-    , colrange :: (Maybe Int, Maybe Int)
+    { func :: !(Maybe Text)
+    , filepath :: !(Maybe FilePath)
+    , lineno :: !(Maybe Int)
+    , colrange :: !(Maybe Int, Maybe Int)
     }
     deriving (Show)
 
@@ -75,7 +74,7 @@ parseContext contextText =
         myColRange :: (Maybe Int, Maybe Int)
         myColRange =
             let colField = infoLine >>= (\x -> splitBy ":" x `atMay` 2)
-                -- \| Parse the column field entries out.
+                -- Parse the column field entries out.
                 getCol :: Int -> Maybe Int
                 getCol idx =
                     colField
@@ -114,15 +113,17 @@ parseShowBreaks t
     response = strip t
     breakpointReg =
         "\\[([0-9]+)\\] +(.*) +([^:]*):([0-9]+):([0-9]+)(-[0-9]+)? ?(.*)" :: Text
-    
+
     matching :: Text -> Maybe (MatchResult Text)
     matching = (=~~ breakpointReg)
 
     parseEach :: MatchResult Text -> Either Text (Int, Loc.ModuleLoc)
     parseEach mr =
-        let idx = read $ unpack $ mr.mrSubs ! 1 -- Don't need to check because regex.
+        let 
+            -- Don't need to use readMay because regex.
+            idx = readNote "failed to read index." $ unpack $ mr.mrSubs ! 1 
             module_ = Just $ mr.mrSubs ! 2
-            filepath = Just $ mr.mrSubs ! 3
+            _filepath = Just $ mr.mrSubs ! 3 -- Not used currently but could be useful?
             lineno' = readMay $ unpack $ mr.mrSubs ! 4
             colStart = readMay $ unpack $ mr.mrSubs ! 5
             colEnd = readMay $ unpack $ mr.mrSubs ! 6
@@ -130,9 +131,9 @@ parseShowBreaks t
                 "enabled" -> Right True
                 "disabled" -> Right False
                 x -> Left ("Breakpoint neither enabled nor disabled: " `append` x)
-            in enabled >> Right (idx, Loc.ModuleLoc module_ lineno' (colStart, colEnd))
+         in enabled >> Right (idx, Loc.ModuleLoc module_ lineno' (colStart, colEnd))
 
-
+-- | Parse the output of ":show modules".
 parseShowModules :: Text -> Either Text [(Text, FilePath)]
 parseShowModules t
     | Data.Text.null stripped = Right []
@@ -146,10 +147,29 @@ parseShowModules t
   where
     stripped = strip t
     response = headMay (splitBy ghcidPrompt stripped)
-    reg =
-        "([[:alnum:]_.]+)[ \\t]+\\( *(.*),.*\\)" :: Text
+    reg = "([[:alnum:]_.]+)[ \\t]+\\( *(.*),.*\\)" :: Text
     matching :: Text -> Maybe (MatchResult Text)
     matching = (=~~ reg)
+
+-- | Parse the output of ":show bindings".
+parseBindings :: Text -> Either Text [NameBinding Text]
+parseBindings t
+    | Data.Text.null stripped = Right []
+    | Just xs <- mapM (=~~ reg) (lines stripped) =
+        let
+            parseEach :: MatchResult Text -> NameBinding Text
+            parseEach mr = NameBinding (mr.mrSubs ! 1) (mr.mrSubs ! 2) (Evald $ mr.mrSubs ! 3)
+         in
+            Right $ parseEach <$> xs
+    | otherwise = Left ("failed to parse ':show bindings': " `append` stripped)
+  where
+    stripped = strip t
+    {- They look like...
+        ghci> :show bindings
+        _result :: Int = _
+        it :: () = ()
+    -}
+    reg = "([a-z_][[:alnum:]_.']*) +:: +(.*) += +(.*)" :: Text
 
 {- | Clean up GHCID exec returned messages/feedback.
 
