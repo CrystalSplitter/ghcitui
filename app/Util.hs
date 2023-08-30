@@ -1,6 +1,9 @@
 module Util where
 
-import Data.Text (Text, append, pack)
+import Data.Text (Text, pack)
+
+showT :: (Show a) => a -> Text
+showT = Data.Text.pack . show
 
 -- Return the number of digits in a given integral
 getNumDigits :: (Integral a) => a -> Int
@@ -15,6 +18,6 @@ formatDigits
     -- ^ Number to format digits of
     -> Text
     -- ^ Formatted Text
-formatDigits spacing num = pack (replicate left ' ') `append` pack (show num)
+formatDigits spacing num = pack (replicate amount ' ') <> pack (show num)
   where
-    left = spacing - getNumDigits num
+    amount = spacing - getNumDigits num

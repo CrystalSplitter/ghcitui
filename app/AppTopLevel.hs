@@ -1,5 +1,9 @@
-module AppTopLevel (AppName(..), Command) where
+module AppTopLevel (AppName (..)) where
 
-data AppName = GHCiTUI | CodeViewport | LiveInterpreter | LiveInterpreterViewport deriving (Eq, Show, Ord)
-
-type Command = String
+-- | Unique identifiers for components of the App.
+data AppName
+    = GHCiTUI
+    | CodeViewport
+    | LiveInterpreter
+    | LiveInterpreterViewport
+    deriving (Eq, Show, Ord)

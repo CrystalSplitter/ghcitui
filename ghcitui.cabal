@@ -23,16 +23,19 @@ executable ghcitui
                         , containers ^>= 0.6.7
                         , brick
                         , text ^>= 2.0.2
-                        , ghcituilib
+                        , ghcitui
                         , vty
                         , safe ^>= 0.3.19
                         , microlens ^>= 0.4.13.1
                         , text-zipper ^>= 0.13
+                        , optparse-applicative ^>= 0.18.1.0
     hs-source-dirs:     app
     other-modules:      BrickUI
                         , AppState
                         , AppTopLevel
                         , Util
+                        , AppInterpState
+                        , AppConfig
     ghc-options:        -rtsopts
                         -threaded
                         -Wall
@@ -47,7 +50,7 @@ executable ghcitui
                         RecordWildCards
                         TupleSections
 
-library ghcituilib
+library
     hs-source-dirs:    lib
     build-depends:     base ^>= 4.17
                        , ghcid ^>= 0.8.8
@@ -58,12 +61,11 @@ library ghcituilib
                        , safe ^>= 0.3.19
                        , string-interpolate ^>= 0.3.2.1
                        , array ^>= 0.5.4.0
-    exposed-modules:   Daemon
-                       , Tui
+    exposed-modules:   Ghcid.Daemon
+                       , Ghcid.ParseContext
                        , Loc
                        , StringUtil
                        , NameBinding
-    other-modules:     ParseContext
     ghc-options:       -rtsopts
                        -threaded
                        -Wall

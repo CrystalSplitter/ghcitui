@@ -10,118 +10,122 @@ import qualified Brick as B
 import qualified Brick.Widgets.Border as B
 import qualified Brick.Widgets.Center as B
 import Brick.Widgets.Core ((<+>), (<=>))
+import qualified Brick.Widgets.Dialog as BD
 import qualified Brick.Widgets.Edit as BE
 import Control.Monad.IO.Class (MonadIO (..))
-import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
-import Data.Text (Text, append, pack, unpack)
-import qualified Data.Text
+import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import qualified Data.Text.Zipper as Zipper
 import qualified Graphics.Vty as V
-import Safe (atMay, headMay)
-import qualified Util
+import Lens.Micro as Lens
+import Safe (atDef, headDef, headMay, lastDef)
 
+import qualified AppConfig
+import qualified AppInterpState as AIS
 import AppState
     ( ActiveWindow (..)
-    , AppConfig (..)
     , AppState (..)
-    , AppStateConfig (..)
+    , appInterpState
     , getSourceContents
-    , liveEditorLens
+    , liveEditor'
     , makeInitialState
     , resetSelectedLine
     , toggleActiveLineInterpreter
     , updateSourceMap
+    , writeDebugLog
     )
-import AppTopLevel (AppName (..), Command)
-import qualified Daemon
-import Debug.Trace (trace)
+import AppTopLevel (AppName (..))
+import qualified Ghcid.Daemon as Daemon
 import qualified Loc
 import qualified NameBinding
+import Util (showT)
+import qualified Util
 
 -- | Alias for 'AppState AppName' convenience.
 type AppS = AppState AppName
 
 appDraw :: AppS -> [B.Widget AppName]
 appDraw s =
-    let
-        sourceLabel =
-            markLabel
-                (s.activeWindow == ActiveCodeViewport)
-                ("Source: " `append` maybe "?" pack (s.interpState.pauseLoc.filepath))
-        interpreterLabel =
-            markLabel (s.activeWindow == ActiveLiveInterpreter) "Interpreter"
-        appendLastCommand w =
-            case headMay s.interpState.execHist of
-                Just h -> B.padBottom B.Max (w <=> B.hBorder <=> B.str h)
-                _ -> w
-        viewportBox =
-            B.borderWithLabel sourceLabel
-                . appendLastCommand
-                . B.withVScrollBars B.OnRight
-                . B.viewport CodeViewport B.Vertical
-                . B.padRight B.Max
-                $ codeViewportDraw s
+    [ (viewportBox <=> interpreterBox <=> debugBox)
+        -- TODO: Make this an expandable viewport, maybe?
+        <+> infoBox
+    ]
+  where
+    sourceLabel =
+        markLabel
+            (s.activeWindow == ActiveCodeViewport)
+            ("Source: " <> maybe "?" T.pack (s.interpState.pauseLoc.filepath))
+    interpreterLabel =
+        markLabel
+            (s.activeWindow == ActiveLiveInterpreter)
+            ( if s ^. appInterpState . AIS.viewLock
+                then "Interpreter"
+                else "Interpreter (Scrolling)"
+            )
+    appendLastCommand w =
+        case headMay s.interpState.execHist of
+            Just h -> B.padBottom B.Max (w <=> B.hBorder <=> B.txt h)
+            _ -> w
+    viewportBox =
+        B.borderWithLabel sourceLabel
+            . appendLastCommand
+            . B.withVScrollBars B.OnRight
+            . B.viewport CodeViewport B.Vertical
+            . B.padRight B.Max
+            $ codeViewportDraw s
 
-        interpreterBox =
-            B.borderWithLabel
-                interpreterLabel
-                $ let
-                    enableCursor = True
-                    displayLimit = 20
-                    displayF t = B.vBox $ B.txt <$> t
-                    previousOutput =
-                        B.txt
-                            . Data.Text.unlines
-                            . reverse
-                            $ if null s.interpLogs
-                                then [" "]
-                                else s.interpLogs
-                    promptLine =
-                        B.txt s.appConfig.interpreterPrompt
-                            <+> BE.renderEditor displayF enableCursor s.liveEditor
-                    lockToBottom w =
-                        if s.liveInterpreterViewLock
-                            then B.visible w
-                            else w
-                   in
-                    B.vLimit
-                        (displayLimit + 1)
-                        ( B.withVScrollBars B.OnRight
-                            . B.viewport LiveInterpreterViewport B.Vertical
-                            $ (previousOutput <=> lockToBottom promptLine)
-                        )
-        infoBox =
-            B.borderWithLabel (B.txt "Info")
-                . B.hLimit 50
-                . B.padBottom B.Max
-                . B.padRight B.Max
-                $ case NameBinding.renderNamesTxt s.interpState.bindings of
-                    [] -> B.emptyWidget
-                    bs -> B.vBox (B.txt <$> bs)
-        debugBox =
-            if s.displayDebugConsoleLogs
+    interpreterBox =
+        B.borderWithLabel interpreterLabel
+            . B.vLimit (displayLimit + 1) -- Plus one for the current line.
+            . B.withVScrollBars B.OnRight
+            . B.viewport LiveInterpreterViewport B.Vertical
+            $ previousOutput <=> lockToBottomOnViewLock promptLine
+      where
+        enableCursor = True
+        displayLimit = 10
+        displayF t = B.vBox $ B.txt <$> t
+        previousOutput =
+            if not (null s.interpLogs)
                 then
-                    let logDisplay =
-                            if null s.debugConsoleLogs then [" "] else s.debugConsoleLogs
-                     in B.borderWithLabel (B.txt "Debug") $
-                            B.withVScrollBars B.OnRight $
-                                B.padRight B.Max $
-                                    B.txt $
-                                        Data.Text.unlines $
-                                            reverse logDisplay
+                    B.txt
+                        . T.unlines
+                        . reverse
+                        $ s.interpLogs
                 else B.emptyWidget
-     in
-        [ (viewportBox <=> interpreterBox <=> debugBox)
-            -- TODO: Make this an expandable viewport, maybe?
-            <+> infoBox
-        ]
+        promptLine =
+            B.txt s.appConfig.getInterpreterPrompt
+                <+> BE.renderEditor displayF enableCursor (s ^. liveEditor')
+        lockToBottomOnViewLock w =
+            if s ^. appInterpState . AIS.viewLock
+                then B.visible w
+                else w
+    infoBox =
+        B.borderWithLabel (B.txt "Info")
+            . B.hLimit 20
+            . B.padBottom B.Max
+            . B.padRight B.Max
+            $ case NameBinding.renderNamesTxt s.interpState.bindings of
+                [] -> B.txt " " -- Can't be an empty widget due to padding?
+                bs -> B.vBox (B.txt <$> bs)
+    debugBox =
+        if s.displayDebugConsoleLogs
+            then
+                let logDisplay =
+                        if null s.debugConsoleLogs then [" "] else s.debugConsoleLogs
+                 in B.borderWithLabel (B.txt "Debug") $
+                        B.withVScrollBars B.OnRight $
+                            B.padRight B.Max $
+                                B.txt $
+                                    T.unlines $
+                                        reverse logDisplay
+            else B.emptyWidget
 
 -- | Mark the label if the first arg is True.
-markLabel :: Bool -> Text -> B.Widget a
-markLabel False labelTxt = B.txt labelTxt
+markLabel :: Bool -> T.Text -> B.Widget a
+markLabel False labelTxt = B.txt (labelTxt <> " [Ctrl+x]")
 markLabel True labelTxt =
-    B.withAttr (B.attrName "highlight") (B.txt ("#>" `append` labelTxt `append` "<#"))
+    B.withAttr (B.attrName "highlight") (B.txt ("#> " <> labelTxt <> " <#"))
 
 -- | Information used to compute the gutter status of each line.
 data GutterInfo = GutterInfo
@@ -162,21 +166,28 @@ makeGutter GutterInfo{..} =
 -- | Make the primary viewport widget.
 codeViewportDraw :: AppS -> B.Widget AppName
 codeViewportDraw s =
-    let sourceDataMaybe = getSourceContents s
-        noSourceWidget =
-            B.padTop (B.Pad 3) $
-                B.hCenter $
-                    B.withAttr (B.attrName "styled") $
-                        maybe (B.txt "No source file loaded") B.txt s.splashContents
-     in case sourceDataMaybe of
-            Nothing -> noSourceWidget
-            Just sourceData -> codeViewportDraw' s sourceData
+    case (currentlyRunning, sourceDataMaybe) of
+        (False, _) -> notRunningWidget
+        (_, Nothing) -> noSourceWidget
+        (_, Just sourceData) -> codeViewportDraw' s sourceData
+  where
+    currentlyRunning = Daemon.isExecuting (interpState s)
+    sourceDataMaybe = getSourceContents s
+    padWidget w =
+        B.padTop (B.Pad 3)
+            . B.hCenter
+            $ B.withAttr (B.attrName "styled") w
+    splashWidget = maybe (B.txt "No splash file loaded.") B.txt s.splashContents
+    notRunningWidget =
+        padWidget splashWidget
+            <=> padWidget (B.txt "Nothing executing. Maybe run something?")
+    noSourceWidget = padWidget splashWidget <=> padWidget (B.txt "Can't display. Source not found.")
 
 -- | Viewport when we have source contents.
-codeViewportDraw' :: AppS -> Text -> B.Widget AppName
+codeViewportDraw' :: AppS -> T.Text -> B.Widget AppName
 codeViewportDraw' s sourceData = composedTogether
   where
-    splitSourceData = Data.Text.lines sourceData
+    splitSourceData = T.lines sourceData
     breakpoints = Daemon.getBpInCurModule s.interpState
     gutterInfoForLine lineno =
         GutterInfo
@@ -192,12 +203,12 @@ codeViewportDraw' s sourceData = composedTogether
             w
     originalLookupLineNo = fromMaybe 0 s.interpState.pauseLoc.linenoF
 
-    stoppedLineW :: Text -> B.Widget AppName
+    stoppedLineW :: T.Text -> B.Widget AppName
     stoppedLineW lineTxt =
         let lineWidget = makeStoppedLineWidget lineTxt s.interpState.pauseLoc.colrangeF
          in prefixLineDefault' (originalLookupLineNo, lineWidget)
 
-    selectedLineW :: Text -> B.Widget AppName
+    selectedLineW :: T.Text -> B.Widget AppName
     selectedLineW lineTxt =
         let transform = id -- Potentialy useful for highlighting spaces?
             lineWidget = B.txt $ transform lineTxt
@@ -205,7 +216,7 @@ codeViewportDraw' s sourceData = composedTogether
 
     -- Select which line widget we want to draw based on both the interpreter
     -- state and the app state.
-    composedTogetherHelper :: (Int, Text) -> B.Widget AppName
+    composedTogetherHelper :: (Int, T.Text) -> B.Widget AppName
     composedTogetherHelper (lineno, lineTxt)
         | Just lineno == s.interpState.pauseLoc.linenoF = stoppedLineW lineTxt
         | lineno == s.selectedLine = selectedLineW lineTxt
@@ -227,20 +238,21 @@ codeViewportDraw' s sourceData = composedTogether
         withLineNums = zip [1 ..]
 
 -- | Make the Stopped Line widget (the line where we paused execution)
-makeStoppedLineWidget :: Text -> Loc.ColumnRange -> B.Widget AppName
+makeStoppedLineWidget :: T.Text -> Loc.ColumnRange -> B.Widget AppName
 makeStoppedLineWidget lineData (Nothing, _) =
     B.forceAttrAllowStyle (B.attrName "stop-line") (B.txt lineData)
 makeStoppedLineWidget lineData (Just startCol, Nothing) =
     makeStoppedLineWidget lineData (Just startCol, Just (startCol + 1))
 makeStoppedLineWidget lineData (Just startCol, Just endCol) =
-    let (lineDataBefore, partial) = Data.Text.splitAt (startCol - 1) lineData
-        (lineDataRange, lineDataAfter) = Data.Text.splitAt (endCol - startCol + 1) partial
-     in B.forceAttrAllowStyle
-            (B.attrName "stop-line")
-            ( B.txt lineDataBefore
-                <+> B.withAttr (B.attrName "highlight") (B.txt lineDataRange)
-                <+> B.txt lineDataAfter
-            )
+    B.forceAttrAllowStyle
+        (B.attrName "stop-line")
+        ( B.txt lineDataBefore
+            <+> B.withAttr (B.attrName "highlight") (B.txt lineDataRange)
+            <+> B.txt lineDataAfter
+        )
+  where
+    (lineDataBefore, partial) = T.splitAt (startCol - 1) lineData
+    (lineDataRange, lineDataAfter) = T.splitAt (endCol - startCol + 1) partial
 
 -- | Get Location that's currently selected.
 selectedModuleLoc :: AppState n -> Maybe Loc.ModuleLoc
@@ -264,44 +276,117 @@ handleInterpreterEvent ev =
     case ev of
         B.VtyEvent (V.EvKey V.KEnter []) -> do
             appState <- B.get
-            let AppState{liveEditor, debugConsoleLogs, interpLogs} = appState
-            let cmd = Data.Text.strip . Data.Text.unlines . BE.getEditContents $ liveEditor
-            (newAppState, output) <- runDaemon2 (\s -> Daemon.execCleaned s (unpack cmd)) appState
-            let newEditor = BE.applyEdit (Zipper.killToEOF . Zipper.gotoBOF) liveEditor
+            let cmd = T.strip (T.unlines (editorContents appState))
+
+            -- Actually run the command.
+            (newAppState1, output) <- runDaemon2 (`Daemon.execCleaned` cmd) appState
+
+            let newEditor =
+                    BE.applyEdit
+                        (Zipper.killToEOF . Zipper.gotoBOF)
+                        (appState ^. liveEditor')
             -- TODO: Should be configurable?
             let interpreterLogLimit = 1000
-            let formattedWithPrompt = appState.appConfig.interpreterPrompt `append` cmd
-            let combinedLogs = (pack <$> reverse output) ++ formattedWithPrompt : interpLogs
-            B.put
-                =<< liftIO
-                    ( updateSourceMap
-                        newAppState
-                            { debugConsoleLogs = "Handled Enter" : debugConsoleLogs
-                            , liveEditor = newEditor
-                            , interpLogs =
+            let formattedWithPrompt = appState.appConfig.getInterpreterPrompt <> cmd
+            let combinedLogs = reverse output <> (formattedWithPrompt : interpLogs appState)
+            let newAppState2 =
+                    writeDebugLog "Handled Enter"
+                        . Lens.set (appInterpState . AIS.viewLock) True
+                        . Lens.over appInterpState (AIS.pushHistory (editorContents appState))
+                        $ newAppState1
+                            { interpLogs =
                                 take interpreterLogLimit combinedLogs
-                            , liveInterpreterViewLock = True
                             }
-                    )
+            let appStateFinal = updateSourceMap (Lens.set liveEditor' newEditor newAppState2)
+            B.put =<< liftIO appStateFinal
+        B.VtyEvent (V.EvKey (V.KChar '\t') []) -> do
+            -- Tab completion?
+            appState <- B.get
+            let cmd = T.strip (T.unlines (editorContents appState))
+            (newAppState1, output) <- runDaemon2 (`Daemon.execCleaned` (":complete " <> cmd)) appState
+            B.put newAppState1
         B.VtyEvent (V.EvKey (V.KChar 'x') [V.MCtrl]) ->
             -- Toggle out of the interpreter.
             leaveInterpreter
         B.VtyEvent (V.EvKey V.KEsc _) ->
             -- Also toggle out of the interpreter.
             leaveInterpreter
+        B.VtyEvent (V.EvKey V.KUp _) -> do
+            let maybeStoreBuffer s =
+                    if not (AIS.isScanningHist (getAis s))
+                        then storeCommandBuffer s
+                        else s
+            let wDebug s =
+                    writeDebugLog
+                        ( "Handled Up; historyPos is "
+                            <> (showT . AIS.historyPos . getAis $ s)
+                        )
+                        s
+            appState <- B.get
+            let appState' =
+                    wDebug
+                        . replaceCommandBufferWithHist -- Display the history.
+                        . Lens.over appInterpState AIS.pastHistoryPos -- Go back in time.
+                        . maybeStoreBuffer -- Store the buffer if we're not scanning already.
+                        $ appState
+            B.put appState'
+        B.VtyEvent (V.EvKey V.KDown _) -> do
+            let wDebug s =
+                    writeDebugLog
+                        ( "Handled Down; historyPos is "
+                            <> (showT . AIS.historyPos . getAis $ s)
+                        )
+                        s
+            appState <- B.get
+            let appState' =
+                    wDebug
+                        . replaceCommandBufferWithHist -- Display the history.
+                        . Lens.over appInterpState AIS.futHistoryPos -- Go forward in time.
+                        $ appState
+            B.put appState'
         B.VtyEvent (V.EvKey V.KPageDown _) ->
             B.vScrollPage (B.viewportScroll LiveInterpreterViewport) B.Down
         B.VtyEvent (V.EvKey V.KPageUp _) -> do
             B.vScrollPage (B.viewportScroll LiveInterpreterViewport) B.Up
             appState <- B.get
-            B.put appState { liveInterpreterViewLock = False }
+            B.put (Lens.set (appInterpState . AIS.viewLock) False appState)
         ev' -> do
             appState <- B.get
-            B.put appState { liveInterpreterViewLock = True }
+            B.put (Lens.set (appInterpState . AIS.viewLock) True appState)
             -- Actually handle text input commands.
-            B.zoom liveEditorLens $ BE.handleEditorEvent ev'
+            B.zoom liveEditor' $ BE.handleEditorEvent ev'
   where
+    editorContents appState = BE.getEditContents $ appState ^. liveEditor'
+    storeCommandBuffer appState =
+        Lens.set (appInterpState . AIS.commandBuffer) (editorContents appState) appState
+    getAis s = s ^. appInterpState
+    getCommandAtHist :: Int -> AppS -> [T.Text]
+    getCommandAtHist i s
+        | i <= 0 = s ^. appInterpState . AIS.commandBuffer
+        | otherwise = atDef (lastDef [] hist) hist (i - 1)
+      where
+        hist = s ^. appInterpState . Lens.to AIS.history
+
     leaveInterpreter = B.put . toggleActiveLineInterpreter =<< B.get
+
+    replaceCommandBufferWithHist :: AppS -> AppS
+    replaceCommandBufferWithHist s@AppState{_appInterpState} = replaceCommandBuffer cmd s
+      where
+        cmd = T.unlines . getCommandAtHist (AIS.historyPos _appInterpState) $ s
+
+-- | Replace the command buffer with the given strings of Text.
+replaceCommandBuffer
+    :: T.Text
+    -- ^ Text to replace with.
+    -> AppS
+    -- ^ State to modify.
+    -> AppS
+    -- ^ New state.
+replaceCommandBuffer replacement s = Lens.set liveEditor' newEditor s
+  where
+    zipp :: Zipper.TextZipper T.Text -> Zipper.TextZipper T.Text
+    zipp = Zipper.killToEOF . Zipper.insertMany replacement . Zipper.gotoBOF
+    newEditor = BE.applyEdit zipp (s ^. liveEditor')
 
 handleViewportEvent :: B.BrickEvent AppName e -> B.EventM AppName (AppState n) ()
 handleViewportEvent ev =
@@ -326,9 +411,9 @@ handleViewportEvent ev =
                         liftIO $
                             fail
                                 ( "Cannot find module of line: "
-                                    ++ fromMaybe "<unknown>" appState.selectedFile
-                                    ++ ":"
-                                    ++ show appState.selectedLine
+                                    <> fromMaybe "<unknown>" appState.selectedFile
+                                    <> ":"
+                                    <> show appState.selectedLine
                                 )
                     Just ml -> do
                         interpState <-
@@ -357,7 +442,7 @@ handleViewportEvent ev =
     moveSelectedLine :: Int -> B.EventM a (AppState n) ()
     moveSelectedLine movAmnt = do
         appState <- B.get
-        let lineCount = maybe 1 (length . Data.Text.lines) (getSourceContents appState)
+        let lineCount = maybe 1 (length . T.lines) (getSourceContents appState)
         let newState =
                 appState{selectedLine = B.clamp 1 lineCount (appState.selectedLine + movAmnt)}
         B.put newState
@@ -395,11 +480,11 @@ handleCursorPosition
 handleCursorPosition s ls =
     if s.activeWindow == ActiveLiveInterpreter
         then -- If we're in the interpreter window, show the cursor.
-
-            let widgetName = LiveInterpreter
-             in B.showCursorNamed widgetName ls
+            B.showCursorNamed widgetName ls
         else -- No cursor
             Nothing
+  where
+    widgetName = LiveInterpreter
 
 -- | Brick main program.
 brickApp :: B.App AppS e AppName
@@ -426,12 +511,8 @@ brickApp =
         }
 
 -- | Start the Brick UI
-launchBrick :: IO ()
-launchBrick = do
-    let commandType = "cabal" :: Command
-    let cmd = case commandType of
-            "cabal" -> "cabal v2-repl ghcitui"
-            _ -> error "Not a supported command type"
-    initialState <- makeInitialState (AppStateConfig "assets/splash.txt") cmd
+launchBrick :: AppConfig.AppConfig -> T.Text -> FilePath -> IO ()
+launchBrick conf target cwd = do
+    initialState <- makeInitialState conf target cwd
     _ <- B.defaultMain brickApp initialState
     pure ()

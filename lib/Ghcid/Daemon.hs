@@ -1,8 +1,10 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module Daemon
+module Ghcid.Daemon
     ( startup
+    , BreakpointArg (..)
+    , InterpState (..)
     , continue
     , deleteBreakpointLine
     , emptyInterpreterState
@@ -11,14 +13,13 @@ module Daemon
     , execMuted
     , getBpInCurModule
     , getBpInFile
+    , isExecuting
     , load
     , quit
     , setBreakpointLine
     , step
     , stepInto
     , toggleBreakpointLine
-    , BreakpointArg (..)
-    , InterpState (..)
     ) where
 
 import Control.Monad (when)
@@ -26,41 +27,43 @@ import Control.Monad.IO.Class (MonadIO (..))
 import qualified Data.Bifunctor as Bifunctor
 import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import Data.String.Interpolate (i)
-import qualified Data.Text as Text
-import qualified Data.Text.IO as Text
+import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import qualified Language.Haskell.Ghcid as Ghcid
 
+import qualified Ghcid.ParseContext as ParseContext
 import qualified Loc
 import qualified NameBinding
-import qualified ParseContext
 import Safe
+import qualified StringUtil
 
 newtype LogLevel = LogLevel Int
 
+-- | Determines where the daemon logs are written.
 data LogOutput = LogOutputStdOut | LogOutputStdErr | LogOutputFile FilePath
 
 data InterpState a = InterpState
     { _ghci :: Ghcid.Ghci
-    -- ^ GHCID handle
-    , func :: Maybe Text.Text
+    -- ^ GHCiD handle.
+    , func :: Maybe T.Text
     -- ^ Current pause position function name.
     , pauseLoc :: Loc.FileLoc
     -- ^ Current pause position.
     , moduleFileMap :: Loc.ModuleFileMap
     -- ^ Mapping between modules and their filepaths.
-    , stack :: [String]
-    -- ^ Program stack (only available during tracing)
+    , stack :: [T.Text]
+    -- ^ Program stack (only available during tracing).
     , breakpoints :: [(Int, Loc.ModuleLoc)]
     -- ^ Currently set breakpoint locations.
-    , bindings :: [NameBinding.NameBinding Text.Text]
+    , bindings :: [NameBinding.NameBinding T.Text]
     -- ^ Current context value bindings.
-    , status :: Either Text.Text a
+    , status :: Either T.Text a
     -- ^ IDK? I had an idea here at one point.
     , logLevel :: LogLevel
     -- ^ How much should we log?
     , logOutput :: LogOutput
     -- ^ Where should we log to?
-    , execHist :: [String]
+    , execHist :: [T.Text]
     -- ^ What's the execution history?
     }
 
@@ -70,6 +73,7 @@ instance Show (InterpState a) where
             Loc.FileLoc filepath' lineno' colrange' = s.pauseLoc
          in [i|{func="#{func'}", filepath="#{filepath'}", lineno="#{lineno'}", colrange="#{colrange'}"}|]
 
+-- | Create an empty/starting interpreter state.
 emptyInterpreterState :: (Monoid a) => Ghcid.Ghci -> InterpState a
 emptyInterpreterState ghci =
     InterpState
@@ -81,15 +85,20 @@ emptyInterpreterState ghci =
         , breakpoints = mempty
         , bindings = mempty
         , status = Right mempty
-        , logLevel = LogLevel 3
+        , logLevel = LogLevel 0
         , logOutput = LogOutputFile "/tmp/ghcitui.log"
         , execHist = mempty
         }
 
-appendExecHist :: String -> InterpState a -> InterpState a
+-- | Append a string to the interpreter's history.
+appendExecHist :: T.Text -> InterpState a -> InterpState a
 appendExecHist cmd s@InterpState{execHist} = s{execHist = cmd : execHist}
 
--- | Start up the GHCI Daemon
+isExecuting :: InterpState a -> Bool
+isExecuting InterpState{func = Nothing} = False
+isExecuting InterpState{func = Just _} = True
+
+-- | Start up the GHCi Daemon.
 startup
     :: String
     -- ^ Command to run (e.g. "ghci" or "cabal repl")
@@ -101,7 +110,7 @@ startup cmd pwd = do
     (ghci, _) <- Ghcid.startGhci cmd (Just pwd) (\_ _ -> pure ())
     pure $ emptyInterpreterState ghci
 
--- | Shutdown ghcid.
+-- | Shutdown GHCiD.
 quit :: InterpState a -> IO (InterpState a)
 quit state = do
     Ghcid.quit (state._ghci)
@@ -120,14 +129,14 @@ updateContext :: (Monoid a) => InterpState a -> IO (InterpState a)
 updateContext state@InterpState{_ghci} = do
     logDebug state "|updateContext| CMD: :show context\n"
     msgs <- Ghcid.exec _ghci ":show context"
-    let feedback = ParseContext.cleanResponse msgs
+    let feedback = ParseContext.cleanResponse (T.pack <$> msgs)
     logDebug
         state
         ( "|updateContext| OUT:\n"
-            `Text.append` ParseContext.linesToText msgs
-            `Text.append` "\n"
+            <> StringUtil.linesToText msgs
+            <> "\n"
         )
-    if Text.null feedback
+    if T.null feedback
         then pure (emptyInterpreterState _ghci) -- We exited everything.
         else do
             let ctx = ParseContext.parseContext feedback
@@ -142,12 +151,12 @@ updateBindings :: InterpState a -> IO (InterpState a)
 updateBindings state@InterpState{_ghci} = do
     logDebug state "|updateBindings| CMD: :show bindings\n"
     msgs <- Ghcid.exec _ghci ":show bindings"
-    let feedback = ParseContext.cleanResponse msgs
+    let feedback = ParseContext.cleanResponse (T.pack <$> msgs)
     logDebug
         state
         ( "|updateBindings| OUT:\n"
-            `Text.append` ParseContext.linesToText msgs
-            `Text.append` "\n"
+            <> StringUtil.linesToText msgs
+            <> "\n"
         )
     case ParseContext.parseBindings feedback of
         Right bindings -> pure (state{bindings})
@@ -157,59 +166,59 @@ updateBindings state@InterpState{_ghci} = do
 updateModuleFileMap :: InterpState a -> IO (InterpState a)
 updateModuleFileMap state@InterpState{_ghci} = do
     modules <- Ghcid.showModules _ghci
-    let moduleFileMap = Loc.ModuleFileMap $ Bifunctor.first Text.pack <$> modules
+    let moduleFileMap = Loc.ModuleFileMap $ Bifunctor.first T.pack <$> modules
     pure $ state{moduleFileMap}
 
 -- | Analogue to ":step".
 step :: (Monoid a) => InterpState a -> IO (InterpState a)
 step state = execMuted state ":step"
 
--- | Analogue to ":step <func>".
+-- | Analogue to ":step \<func\>".
 stepInto
     :: (Monoid a)
     => InterpState a
-    -> String
+    -> T.Text
     -- ^ Function name to jump to
     -> IO (InterpState a)
     -- ^ New interpreter state
-stepInto state func = execMuted state (":step " ++ func)
+stepInto state func = execMuted state (":step " <> func)
 
 -- | Analogue to ":continue". Throws out any messages.
 continue :: (Monoid a) => InterpState a -> IO (InterpState a)
 continue state = execMuted state ":continue"
 
--- | Analogue to ":load <filepath>". Throws out any messages.
+-- | Analogue to ":load \<filepath\>". Throws out any messages.
 load :: (Monoid a) => InterpState a -> FilePath -> IO (InterpState a)
-load state filepath = execMuted state (":l " ++ filepath)
+load state filepath = execMuted state (T.pack $ ":load " <> filepath)
 
 -- | Execute an arbitrary command, as if it was directly written in GHCi.
-exec :: (Monoid a) => InterpState a -> String -> IO (InterpState a, [String])
+exec :: (Monoid a) => InterpState a -> T.Text -> IO (InterpState a, [T.Text])
 exec state@InterpState{_ghci} cmd = do
-    logDebug state ("|exec| CMD: " `Text.append` Text.pack cmd)
-    msgs <- Ghcid.exec _ghci cmd
+    logDebug state ("|exec| CMD: " <> cmd)
+    msgs <- Ghcid.exec _ghci (T.unpack cmd)
     logDebug
         state
         ( "|exec| OUT:\n"
-            `Text.append` ParseContext.linesToText msgs
-            `Text.append` "\n"
+            <> StringUtil.linesToText msgs
+            <> "\n"
         )
     newState <- updateState $ appendExecHist cmd state
-    pure (newState, msgs)
+    pure (newState, fmap T.pack msgs)
 
--- | @exec@, but throw out any messages.
-execMuted :: (Monoid a) => InterpState a -> String -> IO (InterpState a)
+-- | 'exec', but throw out any messages.
+execMuted :: (Monoid a) => InterpState a -> T.Text -> IO (InterpState a)
 execMuted state cmd = do
     (newState, _) <- exec state cmd
     pure newState
 
--- | @exec@, but clean the message from prompt.
-execCleaned :: (Monoid a) => InterpState a -> String -> IO (InterpState a, [String])
+-- | 'exec', but clean the message from prompt.
+execCleaned :: (Monoid a) => InterpState a -> T.Text -> IO (InterpState a, [T.Text])
 execCleaned state cmd = do
     res <- cleaner <$> exec state cmd
-    logDebug state ("|cleaned|:\n" `Text.append` (Text.pack . unlines . snd $ res))
+    logDebug state ("|cleaned|:\n" <> (T.unlines . snd $ res))
     pure res
   where
-    cleaner (s, ls) = (s, Text.unpack <$> (Text.lines . ParseContext.cleanResponse) ls)
+    cleaner (s, ls) = (s, (T.lines . ParseContext.cleanResponse) ls)
 
 -- | Location info passed to *BreakpointLine functions.
 data BreakpointArg
@@ -219,7 +228,7 @@ data BreakpointArg
       ModLoc Loc.ModuleLoc
     deriving (Show, Eq, Ord)
 
--- | Toggle a breakpoint
+-- | Toggle a breakpoint (disable/enable) at a given location.
 toggleBreakpointLine :: (Monoid a) => InterpState a -> BreakpointArg -> IO (InterpState a)
 toggleBreakpointLine state loc
     | Right True <- isSet = deleteBreakpointLine state loc
@@ -228,32 +237,35 @@ toggleBreakpointLine state loc
   where
     invalidLoc = Left "Cannot locate breakpoint position in module without source"
     handleModLoc ml =
-        let
-            fileLoc = maybe invalidLoc Right (Loc.toFileLoc state.moduleFileMap ml)
-         in
-            fileLoc >>= \fl -> case (fl.linenoF, fl.filepath) of
-                (Just lineno, Just filepath) ->
-                    Right $ lineno `elem` getBpInFile state filepath
-                (_, _) -> invalidLoc
+        fileLoc >>= \fl -> case (fl.linenoF, fl.filepath) of
+            (Just lineno, Just filepath) ->
+                Right $ lineno `elem` getBpInFile state filepath
+            (_, _) -> invalidLoc
+      where
+        fileLoc = maybe invalidLoc Right (Loc.toFileLoc state.moduleFileMap ml)
+
     isSet =
         case loc of
             LocalLine lineno -> Right $ lineno `elem` getBpInCurModule state
             ModLoc ml -> handleModLoc ml
+
+showT :: (Show a) => a -> T.Text
+showT = T.pack . show
 
 -- | Set a breakpoint at a given line.
 setBreakpointLine :: (Monoid a) => InterpState a -> BreakpointArg -> IO (InterpState a)
 setBreakpointLine state loc = execMuted state command
   where
     command =
-        ":break " ++ case loc of
-            LocalLine pos -> show pos
+        ":break " <> case loc of
+            LocalLine pos -> showT pos
             ModLoc (Loc.ModuleLoc modM posM (colnoM, _)) ->
-                let mod' = Text.unpack $ fromMaybe "" modM
-                    pos = maybe "" show posM
-                    colno = maybe "" show colnoM
+                let mod' = fromMaybe "" modM
+                    pos = maybe "" showT posM
+                    colno = maybe "" showT colnoM
                  in if pos == ""
                         then error "Cannot set breakpoint at unknown line number"
-                        else mod' ++ " " ++ pos ++ " " ++ colno
+                        else mod' <> " " <> pos <> " " <> colno
 
 -- | Delete a breakpoint at a given line.
 deleteBreakpointLine :: (Monoid a) => InterpState a -> BreakpointArg -> IO (InterpState a)
@@ -275,15 +287,15 @@ deleteBreakpointLine state loc =
                     , otherML.modName == modName && otherML.linenoM == linenoM
                     ]
      in case idxMaybe of
-            Just num -> execMuted state (":delete " ++ show num)
+            Just num -> execMuted state (":delete " <> showT num)
             Nothing -> do
                 logDebug
                     state
-                    ( Text.pack $
+                    ( T.pack $
                         "No breakpoint at "
-                            ++ show loc
-                            ++ "; breakpoints are found at "
-                            ++ show state.breakpoints
+                            <> show loc
+                            <> "; breakpoints are found at "
+                            <> show state.breakpoints
                     )
                 pure state
 
@@ -294,13 +306,13 @@ updateBreakList state@InterpState{_ghci} = do
     logDebug
         state
         ( "|updateBreakList| OUT:\n"
-            `Text.append` ParseContext.linesToText msgs
+            <> StringUtil.linesToText msgs
         )
-    let response = ParseContext.cleanResponse msgs
+    let response = ParseContext.cleanResponse (T.pack <$> msgs)
     pure
         ( case ParseContext.parseShowBreaks response of
             Right breakpoints -> state{breakpoints}
-            Left err -> error ("parsing breakpoint list: " ++ Text.unpack err)
+            Left err -> error ("parsing breakpoint list: " <> T.unpack err)
         )
 
 -- | Return a list of breakpoint line numbers in the current file.
@@ -317,7 +329,7 @@ getBpInFile s fp = catMaybes [loc.linenoF | loc <- breakpointlocs, loc.filepath 
     breakpointlocs = mapMaybe convert s.breakpoints
 
 -- | Log a message at the Debug level.
-logDebug :: (MonadIO m) => InterpState a -> Text.Text -> m ()
+logDebug :: (MonadIO m) => InterpState a -> T.Text -> m ()
 logDebug s msg =
     liftIO $ do
         when (num >= 3) $
@@ -330,15 +342,15 @@ logHelper
     :: (MonadIO m)
     => LogOutput
     -- ^ Where to log?
-    -> Text.Text
+    -> T.Text
     -- ^ prefix
-    -> Text.Text
+    -> T.Text
     -- ^ Message
     -> m ()
 logHelper outputLoc prefix msg = do
     liftIO $ case outputLoc of
-        LogOutputFile path -> Text.appendFile path fmtMsg
-        LogOutputStdOut -> Text.putStrLn fmtMsg
+        LogOutputFile path -> T.appendFile path fmtMsg
+        LogOutputStdOut -> T.putStrLn fmtMsg
         _ -> error "Cannot log to that output configuration."
   where
-    fmtMsg = Text.unlines [prefix `Text.append` line | line <- Text.lines msg]
+    fmtMsg = T.unlines [prefix <> line | line <- T.lines msg]

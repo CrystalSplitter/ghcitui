@@ -6,65 +6,74 @@ module AppState
     , AppState (..)
     , getSourceContents
     , updateSourceMap
-    , liveEditorLens
     , resetSelectedLine
     , makeInitialState
-    , AppStateConfig (..)
     , toggleActiveLineInterpreter
     , toggleBreakpointLine
+    , appInterpState
+    , liveEditor'
+    , writeDebugLog
+    , WindowSizes
     ) where
 
+import AppConfig (AppConfig (..), resolveStartupSplashPath)
+import qualified AppInterpState as AIS
 import qualified Brick.Widgets.Edit as BE
+import Control.Exception (SomeException, catch)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
-import Data.Text (Text)
+import Data.Text (Text, unpack)
 import qualified Data.Text.IO
 import qualified Lens.Micro as Lens
 
-import AppTopLevel (AppName (..), Command)
-import Daemon (toggleBreakpointLine)
-import qualified Daemon
+import AppTopLevel (AppName (..))
+import Ghcid.Daemon (toggleBreakpointLine)
+import qualified Ghcid.Daemon as Daemon
 import qualified Loc
 
 data ActiveWindow = ActiveCodeViewport | ActiveLiveInterpreter | ActiveInfoWindow
     deriving (Show, Eq, Ord)
 
-newtype AppConfig = AppConfig
-    { interpreterPrompt :: Text
-    -- ^ Prompt to show for the live interpreter.
-    }
-    deriving (Eq, Show)
+-- | Size information of the current GHCiDTUI main boxes.
+type WindowSizes = [(ActiveWindow, (Maybe Int, Maybe Int))]
 
 -- | Application state wrapper
 data AppState n = AppState
     { interpState :: Daemon.InterpState ()
-    , liveEditor :: BE.Editor Text n
+    -- ^ The interpreter handle.
+    , _appInterpState :: AIS.AppInterpState Text n
+    -- ^ The live interpreter state (separate from the interpreter
+    -- and the app state itself.
     , interpLogs :: [Text]
     , appConfig :: AppConfig
-    -- ^ The interpreter handle.
+    -- ^ Program launch configuration.
     , activeWindow :: ActiveWindow
-    -- ^ Currently active interpreter.
+    -- ^ Currently active window.
     , selectedFile :: Maybe FilePath
     -- ^ Filepath to the current code viewport contents, if set.
     , selectedLine :: Int
     -- ^ Currently selected line number. Resets back to 1.
     , sourceMap :: Map.Map FilePath Text
     -- ^ Mapping between source filepaths and their contents.
-    , appStateConfig :: AppStateConfig
-    -- ^ Program launch configuration.
     , displayDebugConsoleLogs :: Bool
     -- ^ Whether to display debug Console logs.
     , debugConsoleLogs :: [Text]
     -- ^ Place for debug output to go.
     , splashContents :: !(Maybe Text)
     -- ^ Splash to show on start up.
-    , liveInterpreterViewLock :: !Bool
-    -- ^ Lock the live interpreter view to the bottom.
     }
 
+-- | Lens for the App's interpreter box.
+appInterpState :: Lens.Lens' (AppState n) (AIS.AppInterpState Text n)
+appInterpState = Lens.lens _appInterpState (\x ais -> x{_appInterpState = ais})
+
 -- | Lens wrapper for zooming with handleEditorEvent.
-liveEditorLens :: Lens.Lens' (AppState n) (BE.Editor Text n)
-liveEditorLens = Lens.lens liveEditor (\s newEditor -> s{liveEditor = newEditor})
+liveEditor' :: Lens.Lens' (AppState n) (BE.Editor Text n)
+liveEditor' = appInterpState . AIS.liveEditor
+
+-- | Write a debug log entry.
+writeDebugLog :: Text -> AppState n -> AppState n
+writeDebugLog lg s = s{debugConsoleLogs = lg : debugConsoleLogs s}
 
 toggleActiveLineInterpreter :: AppState n -> AppState n
 toggleActiveLineInterpreter s@AppState{activeWindow} =
@@ -94,51 +103,42 @@ updateSourceMapWithFilepath s filepath
     | otherwise = do
         contents <- Data.Text.IO.readFile filepath
         let newSourceMap = Map.insert filepath contents s.sourceMap
-        pure $ s{sourceMap = newSourceMap}
+        pure s{sourceMap = newSourceMap}
 
 -- | Return the potential contents of the current paused file location.
 getSourceContents :: AppState n -> Maybe Text
 getSourceContents s = s.selectedFile >>= (s.sourceMap Map.!?)
 
--- | Configuration options read in at start-up.
-newtype AppStateConfig = AppStateConfig
-    { startupSplashPath :: FilePath
-    }
-
--- | Create the initial live interpreter widget object.
-initInterpWidget
-    :: n
-    -- ^ Editor name (must be a unique identifier).
-    -> Maybe Int
-    -- ^ Line height of the editor. Nothing for unlimited.
-    -> BE.Editor Text n
-initInterpWidget name height = BE.editorText name height ""
-
--- TODO: This should not be hardcoded for debugging.
-makeInitialState :: AppStateConfig -> Command -> IO (AppState AppName)
-makeInitialState config cmd = do
-    interpState_ <-
-        Daemon.startup cmd "."
-            >>= flip Daemon.load "app/Main.hs"
-            >>= flip Daemon.stepInto "fibty 10"
-    interpState <- Daemon.setBreakpointLine interpState_ (Daemon.LocalLine 41)
-    splashContents <- Data.Text.IO.readFile config.startupSplashPath
-    pure $
+-- | Initialise the state from the config.
+makeInitialState
+    :: AppConfig
+    -- ^ Start up config.
+    -> Text
+    -- ^ Daemon command prefix.
+    -> FilePath
+    -- ^ Workding directory.
+    -> IO (AppState AppName)
+makeInitialState appConfig target cwd = do
+    let cwd' = if null cwd then "." else cwd
+    let fullCmd = getCmd appConfig <> " " <> target
+    interpState <- Daemon.startup (unpack fullCmd) cwd'
+    splashContents <-
+        catch
+            (Just <$> (Data.Text.IO.readFile =<< resolveStartupSplashPath appConfig))
+            -- The splash is never critical.
+            -- Just put nothing there if we can't find it.
+            (const (pure Nothing) :: SomeException -> IO (Maybe Text))
+    pure
         AppState
             { interpState
-            , selectedLine = 1
-            , selectedFile = Nothing
-            , sourceMap = mempty
-            , appStateConfig = config
-            , appConfig =
-                AppConfig
-                    { interpreterPrompt = "ghci> "
-                    }
+            , _appInterpState = AIS.emptyAppInterpState LiveInterpreter
             , activeWindow = ActiveCodeViewport
-            , liveEditor = initInterpWidget LiveInterpreter (Just 1)
-            , interpLogs = []
-            , displayDebugConsoleLogs = False
+            , appConfig
             , debugConsoleLogs = mempty
-            , splashContents = Just splashContents
-            , liveInterpreterViewLock = True
+            , displayDebugConsoleLogs = getDebugConsoleOnStart appConfig
+            , interpLogs = mempty
+            , selectedFile = Nothing
+            , selectedLine = 1
+            , sourceMap = mempty
+            , splashContents
             }

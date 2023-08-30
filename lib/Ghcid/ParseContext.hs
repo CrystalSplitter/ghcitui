@@ -1,8 +1,7 @@
-module ParseContext
+module Ghcid.ParseContext
     ( ParseContextOut (..)
     , NameBinding (..)
     , BindingValue (..)
-    , linesToText
     , parseContext
     , parseBreakResponse
     , parseBindings
@@ -15,7 +14,7 @@ import Prelude hiding (lines)
 import Data.Array ((!))
 import Data.Functor ((<&>))
 import Data.Maybe (isJust)
-import Data.Text (Text, append, dropWhileEnd, lines, null, pack, strip, stripStart, unpack)
+import Data.Text (Text, append, dropWhileEnd, lines, null, pack, strip, stripStart, unlines, unpack)
 import Safe (atMay, headMay, lastDef, readMay, readNote)
 import Text.Regex.TDFA (MatchResult (..), (=~~))
 
@@ -25,9 +24,6 @@ import StringUtil
 
 ghcidPrompt :: Text
 ghcidPrompt = "#~GHCID-START~#"
-
-linesToText :: [String] -> Text
-linesToText = pack . unlines
 
 -- | Output record datatype for @parseContext@.
 data ParseContextOut = ParseContextOut
@@ -104,7 +100,11 @@ parseBreakResponse t
     matching = (=~~ breakpointReg)
 
 -- | Parse the output from ":show breaks"
-parseShowBreaks :: Text -> Either Text [(Int, Loc.ModuleLoc)]
+parseShowBreaks
+    :: Text
+    -- ^ Message to parse.
+    -> Either Text [(Int, Loc.ModuleLoc)]
+    -- ^ Tuples are (breakpoint index, location).
 parseShowBreaks t
     | Just xs <- (mapM matching . lines) response = traverse parseEach xs
     | response == "No active breakpoints." = Right mempty
@@ -119,9 +119,9 @@ parseShowBreaks t
 
     parseEach :: MatchResult Text -> Either Text (Int, Loc.ModuleLoc)
     parseEach mr =
-        let 
+        let
             -- Don't need to use readMay because regex.
-            idx = readNote "failed to read index." $ unpack $ mr.mrSubs ! 1 
+            idx = readNote "failed to read index." $ unpack $ mr.mrSubs ! 1
             module_ = Just $ mr.mrSubs ! 2
             _filepath = Just $ mr.mrSubs ! 3 -- Not used currently but could be useful?
             lineno' = readMay $ unpack $ mr.mrSubs ! 4
@@ -131,7 +131,8 @@ parseShowBreaks t
                 "enabled" -> Right True
                 "disabled" -> Right False
                 x -> Left ("Breakpoint neither enabled nor disabled: " `append` x)
-         in enabled >> Right (idx, Loc.ModuleLoc module_ lineno' (colStart, colEnd))
+         in
+            enabled >> Right (idx, Loc.ModuleLoc module_ lineno' (colStart, colEnd))
 
 -- | Parse the output of ":show modules".
 parseShowModules :: Text -> Either Text [(Text, FilePath)]
@@ -179,5 +180,5 @@ include what we want fairly consistently.
 
 Additionally, pack the lines into a single Text block.
 -}
-cleanResponse :: [String] -> Text
-cleanResponse msgs = lastDef "" (splitBy ghcidPrompt (linesToText msgs))
+cleanResponse :: [Text] -> Text
+cleanResponse msgs = lastDef "" (splitBy ghcidPrompt (Data.Text.unlines msgs))
