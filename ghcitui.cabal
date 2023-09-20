@@ -22,6 +22,7 @@ executable ghcitui
     build-depends:      base ^>= 4.17
                         , containers ^>= 0.6.7
                         , brick
+                        , errors ^>= 2.3.0
                         , text ^>= 2.0.2
                         , ghcitui
                         , vty
@@ -51,28 +52,29 @@ executable ghcitui
                         TupleSections
 
 library
-    hs-source-dirs:    lib
-    build-depends:     base ^>= 4.17
-                       , ghcid ^>= 0.8.8
-                       , containers ^>= 0.6.7
-                       , text ^>= 2.0.2
-                       , regex-tdfa ^>= 1.3.2.1
-                       , regex-base ^>= 0.94.0.2
-                       , safe ^>= 0.3.19
-                       , string-interpolate ^>= 0.3.2.1
-                       , array ^>= 0.5.4.0
-    exposed-modules:   Ghcid.Daemon
-                       , Ghcid.ParseContext
-                       , Loc
-                       , StringUtil
-                       , NameBinding
-    ghc-options:       -rtsopts
-                       -threaded
-                       -Wall
-                       -Wcompat
-                       -Wincomplete-record-updates
-                       -Wpartial-fields
-                       -Wredundant-constraints
+    hs-source-dirs:     lib
+    build-depends:      base ^>= 4.17
+                        , array ^>= 0.5.4.0
+                        , containers ^>= 0.6.7
+                        , errors ^>= 2.3.0
+                        , ghcid ^>= 0.8.8
+                        , regex-base ^>= 0.94.0.2
+                        , regex-tdfa ^>= 1.3.2.1
+                        , safe ^>= 0.3.19
+                        , string-interpolate ^>= 0.3.2.1
+                        , text ^>= 2.0.2
+    exposed-modules:    Ghcid.Daemon
+                        , Ghcid.ParseContext
+                        , Loc
+                        , StringUtil
+                        , NameBinding
+    ghc-options:        -rtsopts
+                        -threaded
+                        -Wall
+                        -Wcompat
+                        -Wincomplete-record-updates
+                        -Wpartial-fields
+                        -Wredundant-constraints
     default-language:   Haskell2010
     default-extensions: OverloadedRecordDot
                         DuplicateRecordFields

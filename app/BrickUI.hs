@@ -10,16 +10,15 @@ import qualified Brick as B
 import qualified Brick.Widgets.Border as B
 import qualified Brick.Widgets.Center as B
 import Brick.Widgets.Core ((<+>), (<=>))
-import qualified Brick.Widgets.Dialog as BD
 import qualified Brick.Widgets.Edit as BE
+import Control.Error.Util (note)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
-import qualified Data.Text.IO as T
 import qualified Data.Text.Zipper as Zipper
 import qualified Graphics.Vty as V
 import Lens.Micro as Lens
-import Safe (atDef, headDef, headMay, lastDef)
+import Safe (atDef, headMay, lastDef)
 
 import qualified AppConfig
 import qualified AppInterpState as AIS
@@ -55,7 +54,11 @@ appDraw s =
     sourceLabel =
         markLabel
             (s.activeWindow == ActiveCodeViewport)
-            ("Source: " <> maybe "?" T.pack (s.interpState.pauseLoc.filepath))
+            ( "Source: "
+                <> case s.interpState.pauseLoc of
+                    Nothing -> "?"
+                    Just loc -> T.pack (Loc.filepath loc)
+            )
     interpreterLabel =
         markLabel
             (s.activeWindow == ActiveLiveInterpreter)
@@ -63,10 +66,7 @@ appDraw s =
                 then "Interpreter"
                 else "Interpreter (Scrolling)"
             )
-    appendLastCommand w =
-        case headMay s.interpState.execHist of
-            Just h -> B.padBottom B.Max (w <=> B.hBorder <=> B.txt h)
-            _ -> w
+
     viewportBox =
         B.borderWithLabel sourceLabel
             . appendLastCommand
@@ -74,6 +74,11 @@ appDraw s =
             . B.viewport CodeViewport B.Vertical
             . B.padRight B.Max
             $ codeViewportDraw s
+      where
+        appendLastCommand w =
+            case headMay s.interpState.execHist of
+                Just h -> B.padBottom B.Max (w <=> B.hBorder <=> B.txt h)
+                _ -> w
 
     interpreterBox =
         B.borderWithLabel interpreterLabel
@@ -100,14 +105,16 @@ appDraw s =
             if s ^. appInterpState . AIS.viewLock
                 then B.visible w
                 else w
+
     infoBox =
         B.borderWithLabel (B.txt "Info")
-            . B.hLimit 20
+            . B.hLimit 30
             . B.padBottom B.Max
             . B.padRight B.Max
             $ case NameBinding.renderNamesTxt s.interpState.bindings of
                 [] -> B.txt " " -- Can't be an empty widget due to padding?
                 bs -> B.vBox (B.txt <$> bs)
+
     debugBox =
         if s.displayDebugConsoleLogs
             then
@@ -187,11 +194,29 @@ codeViewportDraw s =
 codeViewportDraw' :: AppS -> T.Text -> B.Widget AppName
 codeViewportDraw' s sourceData = composedTogether
   where
+    -- Source data split on lines.
     splitSourceData = T.lines sourceData
+    -- Source data split on lines, but only the bit we may want to render.
+    windowedSplitSourceData :: [(Int, T.Text)]
+    windowedSplitSourceData =
+        withLineNums splitSourceData
+      where
+        -- TODO: Maybe figure this bit out for performance?
+        -- We probably can use vpContentSize somehow to ensure
+        -- that we don't bother looking at source beyond
+        -- the render window.
+        startLineno = 1
+        _loadedWindowSize = error "loadedWindowSize not implemented"
+        withLineNums = zip [startLineno ..]
+
     breakpoints = Daemon.getBpInCurModule s.interpState
     gutterInfoForLine lineno =
         GutterInfo
-            { isStoppedHere = Just lineno == s.interpState.pauseLoc.linenoF
+            { isStoppedHere =
+                s.interpState.pauseLoc
+                    <&> Loc.sourceRange
+                    <&> (`Loc.isLineInside` lineno)
+                    & fromMaybe False
             , isBreakpoint = lineno `elem` breakpoints
             , gutterLineNumber = lineno
             , gutterDigitWidth = Util.getNumDigits $ length splitSourceData
@@ -201,12 +226,21 @@ codeViewportDraw' s sourceData = composedTogether
         prependGutter
             (gutterInfoForLine lineno)
             w
-    originalLookupLineNo = fromMaybe 0 s.interpState.pauseLoc.linenoF
+    originalLookupLineNo =
+        s.interpState.pauseLoc
+            >>= Loc.startLine . Loc.sourceRange
+            & fromMaybe 0
 
     stoppedLineW :: T.Text -> B.Widget AppName
     stoppedLineW lineTxt =
-        let lineWidget = makeStoppedLineWidget lineTxt s.interpState.pauseLoc.colrangeF
+        let Loc.SourceRange{startCol, endCol} =
+                maybe Loc.unknownSourceRange Loc.sourceRange (Daemon.pauseLoc (interpState s))
+            lineWidget = makeStoppedLineWidget lineTxt (startCol, endCol)
          in prefixLineDefault' (originalLookupLineNo, lineWidget)
+
+    stoppedRangeW :: Int -> T.Text -> B.Widget AppName
+    stoppedRangeW lineno lineTxt =
+        prefixLineDefault' (lineno, B.forceAttrAllowStyle (B.attrName "stop-line") (B.txt lineTxt))
 
     selectedLineW :: T.Text -> B.Widget AppName
     selectedLineW lineTxt =
@@ -216,18 +250,32 @@ codeViewportDraw' s sourceData = composedTogether
 
     -- Select which line widget we want to draw based on both the interpreter
     -- state and the app state.
+    --
+    -- It's important that the line information is cached, because
+    -- each line is actually pretty expensive to render.
     composedTogetherHelper :: (Int, T.Text) -> B.Widget AppName
-    composedTogetherHelper (lineno, lineTxt)
-        | Just lineno == s.interpState.pauseLoc.linenoF = stoppedLineW lineTxt
-        | lineno == s.selectedLine = selectedLineW lineTxt
-        | otherwise =
-            ((\w -> prefixLineDefault' (lineno, w)) . B.txt) lineTxt
+    composedTogetherHelper (lineno, lineTxt) = lineWidgetCached
+      where
+        sr = maybe Loc.unknownSourceRange Loc.sourceRange (Daemon.pauseLoc (interpState s))
+        mLineno = Loc.singleify sr
+        lineWidget = case mLineno of
+            -- This only makes the stopped line widget appear for the start loc.
+            Just (singleLine, _) | lineno == singleLine -> stoppedLineW lineTxt
+            -- If it's a range, just try to show the range.
+            _
+                | Loc.isLineInside sr lineno -> stoppedRangeW lineno lineTxt
+            -- If it's not something we stopped in, just show the selection normally.
+            _
+                | lineno == s.selectedLine -> selectedLineW lineTxt
+            -- Default case.
+            _ -> ((\w -> prefixLineDefault' (lineno, w)) . B.txt) lineTxt
+        lineWidgetCached = B.cached (CodeViewportLine lineno) lineWidget
 
     composedTogether :: B.Widget AppName
     composedTogether =
         B.vBox
             ( (\(num, t) -> wrapSelectedLine num $ composedTogetherHelper (num, t))
-                <$> withLineNums splitSourceData
+                <$> windowedSplitSourceData
             )
       where
         wrapSelectedLine lineno w =
@@ -235,7 +283,6 @@ codeViewportDraw' s sourceData = composedTogether
                 then -- Add highlighting, then mark it as visible in the viewport.
                     B.visible $ B.modifyDefAttr (`V.withStyle` V.bold) w
                 else w
-        withLineNums = zip [1 ..]
 
 -- | Make the Stopped Line widget (the line where we paused execution)
 makeStoppedLineWidget :: T.Text -> Loc.ColumnRange -> B.Widget AppName
@@ -254,12 +301,9 @@ makeStoppedLineWidget lineData (Just startCol, Just endCol) =
     (lineDataBefore, partial) = T.splitAt (startCol - 1) lineData
     (lineDataRange, lineDataAfter) = T.splitAt (endCol - startCol + 1) partial
 
--- | Get Location that's currently selected.
-selectedModuleLoc :: AppState n -> Maybe Loc.ModuleLoc
-selectedModuleLoc s =
-    Loc.toModuleLoc
-        s.interpState.moduleFileMap
-        (Loc.FileLoc s.selectedFile (Just s.selectedLine) (Nothing, Nothing))
+-- -------------------------------------------------------------------------------------------------
+-- Event Handling
+-- -------------------------------------------------------------------------------------------------
 
 -- | Handle any Brick event and update the state.
 handleEvent :: B.BrickEvent AppName e -> B.EventM AppName AppS ()
@@ -269,6 +313,10 @@ handleEvent ev = do
         ActiveCodeViewport -> handleViewportEvent ev
         ActiveLiveInterpreter -> handleInterpreterEvent ev
         _ -> pure ()
+
+-- -------------------------------------------------------------------------------------------------
+-- Interpreter Event Handling
+-- -------------------------------------------------------------------------------------------------
 
 -- | Handle events when the interpreter (live GHCi) is selected.
 handleInterpreterEvent :: B.BrickEvent AppName e -> B.EventM AppName AppS ()
@@ -290,20 +338,23 @@ handleInterpreterEvent ev =
             let formattedWithPrompt = appState.appConfig.getInterpreterPrompt <> cmd
             let combinedLogs = reverse output <> (formattedWithPrompt : interpLogs appState)
             let newAppState2 =
-                    writeDebugLog "Handled Enter"
+                    writeDebugLog ("Handled Enter: Ran '" <> cmd <> "'")
                         . Lens.set (appInterpState . AIS.viewLock) True
                         . Lens.over appInterpState (AIS.pushHistory (editorContents appState))
                         $ newAppState1
                             { interpLogs =
                                 take interpreterLogLimit combinedLogs
                             }
-            let appStateFinal = updateSourceMap (Lens.set liveEditor' newEditor newAppState2)
-            B.put =<< liftIO appStateFinal
+            let appStateFinalIO = updateSourceMap (Lens.set liveEditor' newEditor newAppState2)
+            B.put =<< liftIO appStateFinalIO
         B.VtyEvent (V.EvKey (V.KChar '\t') []) -> do
             -- Tab completion?
             appState <- B.get
             let cmd = T.strip (T.unlines (editorContents appState))
-            (newAppState1, output) <- runDaemon2 (`Daemon.execCleaned` (":complete " <> cmd)) appState
+            (newAppState1, _output) <-
+                runDaemon2
+                    (`Daemon.execCleaned` (":complete " <> cmd))
+                    appState
             B.put newAppState1
         B.VtyEvent (V.EvKey (V.KChar 'x') [V.MCtrl]) ->
             -- Toggle out of the interpreter.
@@ -388,7 +439,11 @@ replaceCommandBuffer replacement s = Lens.set liveEditor' newEditor s
     zipp = Zipper.killToEOF . Zipper.insertMany replacement . Zipper.gotoBOF
     newEditor = BE.applyEdit zipp (s ^. liveEditor')
 
-handleViewportEvent :: B.BrickEvent AppName e -> B.EventM AppName (AppState n) ()
+-- -------------------------------------------------------------------------------------------------
+-- Viewport Event Handling
+-- -------------------------------------------------------------------------------------------------
+
+handleViewportEvent :: B.BrickEvent AppName e -> B.EventM AppName AppS ()
 handleViewportEvent ev =
     case ev of
         B.VtyEvent (V.EvKey key ms)
@@ -399,30 +454,16 @@ handleViewportEvent ev =
             | key == V.KChar 's' -> do
                 appState <- B.get
                 newState <- Daemon.step `runDaemon` appState
+                invalidateLineCache
                 B.put newState
             | key == V.KChar 'c' -> do
                 appState <- B.get
                 newState <- Daemon.continue `runDaemon` appState
+                invalidateLineCache
                 B.put newState
             | key == V.KChar 'b' -> do
                 appState <- B.get
-                case selectedModuleLoc appState of
-                    Nothing ->
-                        liftIO $
-                            fail
-                                ( "Cannot find module of line: "
-                                    <> fromMaybe "<unknown>" appState.selectedFile
-                                    <> ":"
-                                    <> show appState.selectedLine
-                                )
-                    Just ml -> do
-                        interpState <-
-                            liftIO $
-                                Daemon.toggleBreakpointLine
-                                    appState.interpState
-                                    (Daemon.ModLoc ml)
-                        B.put appState{interpState}
-
+                insertViewportBreakpoint appState
             -- j and k are the vim navigation keybindings.
             | key `elem` [V.KDown, V.KChar 'j'] -> do
                 moveSelectedLine 1
@@ -439,14 +480,51 @@ handleViewportEvent ev =
         -- TODO: Mouse support here?
         _ -> pure ()
   where
-    moveSelectedLine :: Int -> B.EventM a (AppState n) ()
+    moveSelectedLine :: Int -> B.EventM AppName (AppState n) ()
     moveSelectedLine movAmnt = do
         appState <- B.get
         let lineCount = maybe 1 (length . T.lines) (getSourceContents appState)
-        let newState =
-                appState{selectedLine = B.clamp 1 lineCount (appState.selectedLine + movAmnt)}
+        let oldLineno = selectedLine appState
+        let newLineno = B.clamp 1 lineCount (oldLineno + movAmnt)
+        let newState = appState{selectedLine = newLineno}
+        -- These two lines need to be re-rendered.
+        B.invalidateCacheEntry (CodeViewportLine oldLineno)
+        B.invalidateCacheEntry (CodeViewportLine newLineno)
         B.put newState
-        pure ()
+
+insertViewportBreakpoint :: AppS -> B.EventM AppName AppS ()
+insertViewportBreakpoint appState =
+    case selectedModuleLoc appState of
+        Left err -> do
+            let selectedFileMsg = fromMaybe "<unknown>" appState.selectedFile
+            let errMsg =
+                    "Cannot find module of line: "
+                        <> selectedFileMsg
+                        <> ":"
+                        <> show appState.selectedLine
+                        <> ": "
+                        <> T.unpack err
+            liftIO $ fail errMsg
+        Right ml -> do
+            interpState <-
+                liftIO $
+                    Daemon.toggleBreakpointLine
+                        appState.interpState
+                        (Daemon.ModLoc ml)
+            -- We may need to be smarter about this,
+            -- because there's a chance that the module loc 'ml'
+            -- doesn't actually refer to this viewed file?
+            case Loc.singleify (Loc.sourceRange ml) of
+                Just (lineno, _colrange) ->
+                    B.invalidateCacheEntry (CodeViewportLine lineno)
+                _ ->
+                    -- If we don't know, just invalidate everything.
+                    invalidateLineCache
+            B.put appState{interpState}
+
+-- TODO: Invalidate only the lines instead of the entire application.
+invalidateLineCache :: (Ord n) => B.EventM n (state n) ()
+invalidateLineCache = B.invalidateCache
 
 runDaemon
     :: (MonadIO m)
@@ -485,6 +563,29 @@ handleCursorPosition s ls =
             Nothing
   where
     widgetName = LiveInterpreter
+
+-- | Get Location that's currently selected.
+selectedModuleLoc :: AppState n -> Either T.Text Loc.ModuleLoc
+selectedModuleLoc s = eModuleLoc =<< fl
+  where
+    sourceRange = Loc.srFromLineNo (selectedLine s)
+    fl = case s.selectedFile of
+        Nothing -> Left "No selected file to get module of"
+        Just x -> Right (Loc.FileLoc x sourceRange)
+    eModuleLoc x =
+        let moduleFileMap = Daemon.moduleFileMap (interpState s)
+            res = Loc.toModuleLoc moduleFileMap x
+            errMsg =
+                "No matching module found for '"
+                    <> showT x
+                    <> "' because moduleFileMap was '"
+                    <> showT moduleFileMap
+                    <> "'"
+         in note errMsg res
+
+-- -------------------------------------------------------------------------------------------------
+-- Brick Main
+-- -------------------------------------------------------------------------------------------------
 
 -- | Brick main program.
 brickApp :: B.App AppS e AppName

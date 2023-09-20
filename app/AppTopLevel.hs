@@ -4,6 +4,7 @@ module AppTopLevel (AppName (..)) where
 data AppName
     = GHCiTUI
     | CodeViewport
+    | CodeViewportLine Int
     | LiveInterpreter
     | LiveInterpreterViewport
     deriving (Eq, Show, Ord)

@@ -85,7 +85,7 @@ fibty n =
 main :: IO ()
 main = do
     opts <- Opt.execParser parserInfo
-    let conf = AppConfig.defaultConfig
+    let conf = AppConfig.defaultConfig { AppConfig.getDebugConsoleOnStart = debugConsole opts }
     launchBrick conf (target opts) (workdir opts)
   where
     parserInfo = Opt.info

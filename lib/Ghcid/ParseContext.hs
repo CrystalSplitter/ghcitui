@@ -1,3 +1,5 @@
+{-# LANGUAGE NamedFieldPuns #-}
+
 module Ghcid.ParseContext
     ( ParseContextOut (..)
     , NameBinding (..)
@@ -7,14 +9,15 @@ module Ghcid.ParseContext
     , parseBindings
     , parseShowBreaks
     , cleanResponse
+    , ParseError (..)
     ) where
 
 import Prelude hiding (lines)
 
+import Control.Applicative ((<|>))
+import Control.Error.Util (note)
 import Data.Array ((!))
-import Data.Functor ((<&>))
-import Data.Maybe (isJust)
-import Data.Text (Text, append, dropWhileEnd, lines, null, pack, strip, stripStart, unlines, unpack)
+import qualified Data.Text as T
 import Safe (atMay, headMay, lastDef, readMay, readNote)
 import Text.Regex.TDFA (MatchResult (..), (=~~))
 
@@ -22,155 +25,219 @@ import qualified Loc
 import NameBinding
 import StringUtil
 
-ghcidPrompt :: Text
+ghcidPrompt :: T.Text
 ghcidPrompt = "#~GHCID-START~#"
 
--- | Output record datatype for @parseContext@.
+newtype ParseError = ParseError T.Text deriving (Show, Eq)
+
+showT :: (Show a) => a -> T.Text
+showT = T.pack . show
+
+-- | Output record datatype for 'parseContext'.
 data ParseContextOut = ParseContextOut
-    { func :: !(Maybe Text)
-    , filepath :: !(Maybe FilePath)
-    , lineno :: !(Maybe Int)
-    , colrange :: !(Maybe Int, Maybe Int)
+    { func :: !(Either ParseError T.Text)
+    , filepath :: !(Either ParseError FilePath)
+    , pcSourceRange :: !(Either ParseError Loc.SourceRange)
     }
     deriving (Show)
 
 -- | Parse the output from ":show context" for the interpreter state.
-parseContext :: Text -> ParseContextOut
-parseContext contextText =
-    let splits = splitBy ghcidPrompt contextText
-        stopReg :: Text -> [Text]
-        stopReg s = s =~~ ("[ \t^]Stopped in ([[:alnum:]_.]+),.*" :: Text)
+parseContext :: T.Text -> ParseContextOut
+parseContext contextText = case eInfoLine contextText of
+    Right (func, rest) ->
+        ParseContextOut
+            (Right func)
+            (parseFile rest)
+            (Right (parseSourceRange rest))
+    Left e -> ParseContextOut (Left e) (Left e) (Left e)
 
-        -- Context line to actually parse
-        infoLine :: Maybe Text
-        infoLine =
-            stripStart
-                <$> foldr
-                    (\next acc -> if isJust next then next else acc)
-                    Nothing
-                    (headMay . stopReg <$> splits)
+parseFile :: T.Text -> Either ParseError FilePath
+parseFile s
+    | Just mr <- s =~~ ("^[ \t]*([^:]*):" :: T.Text) = Right (T.unpack (mrSubs mr ! 1))
+    | otherwise = Left (ParseError ("Could not parse file from: '" <> s <> "'"))
 
-        -- Function name, possibly preceded by module.
-        myFunc :: Maybe Text
-        myFunc = infoLine >>= (\x -> splitBy " " x `atMay` 2) <&> dropWhileEnd (`elem` [',', ' '])
+{- | Parse a source range structure into a SourceRange object.
+-}
+parseSourceRange :: T.Text -> Loc.SourceRange
+parseSourceRange s
+    -- Matches (12,34)-(56,78)
+    | Just mr <- matches "\\(([0-9]+),([0-9]+)\\)-\\(([0-9]+),([0-9]+)\\)" = fullRange mr
+    -- Matches 12:34-56
+    | Just mr <- matches "([0-9]+):([0-9]+)-([0-9]+)" = lineColRange mr
+    -- Matches 12:34
+    | Just mr <- matches "([0-9]+):([0-9]+)" = lineColSingle mr
+    -- Matches 12
+    | Just mr <- matches "([0-9]+)" = onlyLine mr
+    | otherwise = Loc.unknownSourceRange
+  where
+    matches :: T.Text -> Maybe (MatchResult T.Text)
+    matches reg = s =~~ reg
 
-        -- File path
-        myFile :: Maybe FilePath
-        myFile =
-            infoLine
-                >>= headMay . splitBy ":"
-                >>= (\x -> splitBy ", " x `atMay` 1)
-                <&> unpack
+    unpackRead :: (Read a) => MatchResult T.Text -> Int -> Maybe a
+    unpackRead mr idx = readMay (T.unpack (mrSubs mr ! idx))
 
-        -- Line number
-        myLineno :: Maybe Int
-        myLineno = infoLine >>= (\x -> splitBy ":" x `atMay` 1) <&> read . unpack
+    fullRange :: MatchResult T.Text -> Loc.SourceRange
+    fullRange mr =
+        let startLine = unpackRead mr 1
+            startCol = unpackRead mr 2
+            endLine = unpackRead mr 3
+            endCol = unpackRead mr 4
+         in Loc.SourceRange{startLine, startCol, endLine, endCol}
 
-        -- Column range
-        myColRange :: (Maybe Int, Maybe Int)
-        myColRange =
-            let colField = infoLine >>= (\x -> splitBy ":" x `atMay` 2)
-                -- Parse the column field entries out.
-                getCol :: Int -> Maybe Int
-                getCol idx =
-                    colField
-                        >>= (\x -> splitBy "-" x `atMay` idx)
-                        >>= readMay . unpack
-             in (getCol 0, getCol 1)
-     in ParseContextOut myFunc myFile myLineno myColRange
+    lineColRange :: MatchResult T.Text -> Loc.SourceRange
+    lineColRange mr =
+        let startLine = unpackRead mr 1
+            startCol = unpackRead mr 2
+            endLine = startLine
+            endCol = unpackRead mr 3
+         in Loc.SourceRange{startLine, startCol, endLine, endCol}
 
-parseBreakResponse :: Text -> Either Text [Loc.ModuleLoc]
+    lineColSingle :: MatchResult T.Text -> Loc.SourceRange
+    lineColSingle mr =
+        let startLine = unpackRead mr 1
+            startCol = unpackRead mr 2
+            endLine = startLine
+            endCol = fmap (+ 1) startCol
+         in Loc.SourceRange{startLine, startCol, endLine, endCol}
+
+    onlyLine :: MatchResult T.Text -> Loc.SourceRange
+    onlyLine mr =
+        let startLine = unpackRead mr 1
+            startCol = Nothing
+            endLine = startLine
+            endCol = Nothing
+         in Loc.SourceRange{startLine, startCol, endLine, endCol}
+
+{- | Converts a multiline contextText from:
+
+        Stopped in Foo.Bar, other stuff here
+        more stuff that doesn't match
+        even more stuff
+
+    into ("Foo.Bar", "other stuff here") if the text matches.
+-}
+eInfoLine :: T.Text -> Either ParseError (T.Text, T.Text)
+eInfoLine contextText =
+    note
+        (ParseError $ "Could not match info line: '" <> showT splits <> "'")
+        stopLine
+  where
+    splits = splitBy ghcidPrompt contextText
+    stopLineMR = foldr (\n acc -> acc <|> stopReg n) Nothing splits
+    stopLine = (\mr -> (mrSubs mr ! 1, mrSubs mr ! 2)) <$> stopLineMR
+    -- \| Match on the "Stopped in ..." line.
+    stopReg :: T.Text -> Maybe (MatchResult T.Text)
+    stopReg s = s =~~ ("^[ \t]*Stopped in ([[:alnum:]_.]+),(.*)" :: T.Text)
+
+parseBreakResponse :: T.Text -> Either T.Text [Loc.ModuleLoc]
 parseBreakResponse t
-    | Just xs <- mapM matching (lines t) =
+    | Just xs <- mapM matching (T.lines t) =
         let
-            parseEach :: MatchResult Text -> Loc.ModuleLoc
+            parseEach :: MatchResult T.Text -> Loc.ModuleLoc
             parseEach mr =
-                let path = Just $ mr.mrSubs ! 2
-                    lineno' = readMay $ unpack $ mr.mrSubs ! 3
-                    colStart = readMay $ unpack $ mr.mrSubs ! 4
-                    colEnd = readMay $ unpack $ mr.mrSubs ! 5
-                 in Loc.ModuleLoc path lineno' (colStart, colEnd)
+                let moduleName = mr.mrSubs ! 2
+                    startLine = readMay $ T.unpack $ mr.mrSubs ! 3
+                    endLine = startLine
+                    startCol = readMay $ T.unpack $ mr.mrSubs ! 4
+                    endCol = readMay $ T.unpack $ mr.mrSubs ! 5
+                 in Loc.ModuleLoc moduleName Loc.SourceRange{startLine, startCol, endLine, endCol}
          in
             Right $ parseEach <$> xs
-    | otherwise = Left t
+    | otherwise = Left ("Could not parse breakpoint from: " <> t)
   where
     breakpointReg =
-        "Breakpoint (.*) activated at (.*):([0-9]*):([0-9]*)(-[0-9]*)?" :: Text
-    matching :: Text -> Maybe (MatchResult Text)
+        "Breakpoint (.*) activated at (.*):([0-9]*):([0-9]*)(-[0-9]*)?" :: T.Text
+    matching :: T.Text -> Maybe (MatchResult T.Text)
     matching = (=~~ breakpointReg)
 
 -- | Parse the output from ":show breaks"
 parseShowBreaks
-    :: Text
+    :: T.Text
     -- ^ Message to parse.
-    -> Either Text [(Int, Loc.ModuleLoc)]
+    -> Either T.Text [(Int, Loc.ModuleLoc)]
     -- ^ Tuples are (breakpoint index, location).
 parseShowBreaks t
-    | Just xs <- (mapM matching . lines) response = traverse parseEach xs
+    | Just xs <- (mapM matching . T.lines) response = traverse parseEach xs
     | response == "No active breakpoints." = Right mempty
-    | otherwise = Left (pack ("Response was" ++ show response))
+    | otherwise = Left (T.pack ("Response was" ++ show response))
   where
-    response = strip t
+    response = T.strip t
     breakpointReg =
-        "\\[([0-9]+)\\] +(.*) +([^:]*):([0-9]+):([0-9]+)(-[0-9]+)? ?(.*)" :: Text
+        "\\[([0-9]+)\\] +(.*) +([^:]*):(.*) +([a-zA-Z_-]+)" :: T.Text
 
-    matching :: Text -> Maybe (MatchResult Text)
+    matching :: T.Text -> Maybe (MatchResult T.Text)
     matching = (=~~ breakpointReg)
 
-    parseEach :: MatchResult Text -> Either Text (Int, Loc.ModuleLoc)
+    parseEach :: MatchResult T.Text -> Either T.Text (Int, Loc.ModuleLoc)
     parseEach mr =
         let
             -- Don't need to use readMay because regex.
-            idx = readNote "failed to read index." $ unpack $ mr.mrSubs ! 1
-            module_ = Just $ mr.mrSubs ! 2
+            idx = readNote "failed to read index." $ T.unpack $ mr.mrSubs ! 1
+            module_ = mr.mrSubs ! 2
             _filepath = Just $ mr.mrSubs ! 3 -- Not used currently but could be useful?
-            lineno' = readMay $ unpack $ mr.mrSubs ! 4
-            colStart = readMay $ unpack $ mr.mrSubs ! 5
-            colEnd = readMay $ unpack $ mr.mrSubs ! 6
-            enabled = case mr.mrSubs ! 7 of
+            sourceRange = parseSourceRange $ mr.mrSubs ! 4
+            enabled = case mr.mrSubs ! 5 of
                 "enabled" -> Right True
                 "disabled" -> Right False
-                x -> Left ("Breakpoint neither enabled nor disabled: " `append` x)
+                x -> Left ("Breakpoint neither enabled nor disabled: " <> x)
          in
-            enabled >> Right (idx, Loc.ModuleLoc module_ lineno' (colStart, colEnd))
+            case sourceRange of
+                _ | sourceRange == Loc.unknownSourceRange ->
+                    Left ("Could not parse source range for breakpoint " <> showT idx)
+                  | otherwise ->
+                    enabled >> Right ( idx, Loc.ModuleLoc module_ sourceRange )
 
 -- | Parse the output of ":show modules".
-parseShowModules :: Text -> Either Text [(Text, FilePath)]
+parseShowModules :: T.Text -> Either T.Text [(T.Text, FilePath)]
 parseShowModules t
-    | Data.Text.null stripped = Right []
-    | Just xs <- (mapM matching . lines) =<< response =
+    | T.null stripped = Right []
+    | Just xs <- (mapM matching . T.lines) =<< response =
         let
-            parseEach :: MatchResult Text -> (Text, FilePath)
-            parseEach mr = (mr.mrSubs ! 1, unpack $ mr.mrSubs ! 2)
+            parseEach :: MatchResult T.Text -> (T.Text, FilePath)
+            parseEach mr = (mr.mrSubs ! 1, T.unpack $ mr.mrSubs ! 2)
          in
             Right $ parseEach <$> xs
-    | otherwise = Left ("failed to parse ':show modules': " `append` stripped)
+    | otherwise = Left ("failed to parse ':show modules': " <> stripped)
   where
-    stripped = strip t
+    stripped = T.strip t
     response = headMay (splitBy ghcidPrompt stripped)
-    reg = "([[:alnum:]_.]+)[ \\t]+\\( *(.*),.*\\)" :: Text
-    matching :: Text -> Maybe (MatchResult Text)
+    reg = "([[:alnum:]_.]+)[ \\t]+\\( *(.*),.*\\)" :: T.Text
+    matching :: T.Text -> Maybe (MatchResult T.Text)
     matching = (=~~ reg)
 
 -- | Parse the output of ":show bindings".
-parseBindings :: Text -> Either Text [NameBinding Text]
+parseBindings :: T.Text -> Either T.Text [NameBinding T.Text]
 parseBindings t
-    | Data.Text.null stripped = Right []
-    | Just xs <- mapM (=~~ reg) (lines stripped) =
+    | T.null stripped = Right []
+    | Just xs <- mapM (=~~ reg) (mergeBindingLines (T.lines stripped)) =
         let
-            parseEach :: MatchResult Text -> NameBinding Text
+            parseEach :: MatchResult T.Text -> NameBinding T.Text
             parseEach mr = NameBinding (mr.mrSubs ! 1) (mr.mrSubs ! 2) (Evald $ mr.mrSubs ! 3)
          in
             Right $ parseEach <$> xs
-    | otherwise = Left ("failed to parse ':show bindings': " `append` stripped)
+    | otherwise = Left ("failed to parse ':show bindings':\n" <> stripped)
   where
-    stripped = strip t
+    stripped = T.strip t
+
+    mergeBindingLines :: [T.Text] -> [T.Text]
+    mergeBindingLines [] = []
+    mergeBindingLines [x] = [x]
+    mergeBindingLines (x1 : x2 : xs) =
+        if T.elem '=' x1
+            then x1 : mergeBindingLines (x2 : xs)
+            else
+                let newLine = (T.strip x1 <> " " <> T.strip x2)
+                 in mergeBindingLines (newLine : xs)
     {- They look like...
         ghci> :show bindings
+        somethingLong ::
+          [AVeryLong
+            SubType
+             -> SomeResultType] = value
         _result :: Int = _
         it :: () = ()
     -}
-    reg = "([a-z_][[:alnum:]_.']*) +:: +(.*) += +(.*)" :: Text
+    reg = "([a-z_][[:alnum:]_.']*) +:: +(.*) += +(.*)" :: T.Text
 
 {- | Clean up GHCID exec returned messages/feedback.
 
@@ -178,7 +245,7 @@ Frequently, "exec" may include various GHCID prompts in its
 returned messages. Return only the last prompt output, which seems to
 include what we want fairly consistently.
 
-Additionally, pack the lines into a single Text block.
+Additionally, pack the lines into a single T.Text block.
 -}
-cleanResponse :: [Text] -> Text
-cleanResponse msgs = lastDef "" (splitBy ghcidPrompt (Data.Text.unlines msgs))
+cleanResponse :: [T.Text] -> T.Text
+cleanResponse msgs = lastDef "" (splitBy ghcidPrompt (T.unlines msgs))
