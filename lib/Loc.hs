@@ -1,27 +1,26 @@
-{-# LANGUAGE NamedFieldPuns #-}
-
 module Loc
     ( ColumnRange
     , ModuleLoc (..)
     , FileLoc (..)
     , ModuleFileMap
     , moduleFileMapFromList
+    , moduleFileMapAssocs
     , getPathOfModule
     , getModuleOfPath
     , toModuleLoc
     , toFileLoc
-    , HasSourceRange(..)
-    , SourceRange(..)
+    , HasSourceRange (..)
+    , SourceRange (..)
     , unknownSourceRange
     , isLineInside
     , srFromLineNo
     , singleify
     ) where
 
+import Data.Map.Strict as Map
+import Data.Maybe (isNothing)
 import qualified Data.Text as T
 import Safe (headMay)
-import Data.Maybe (isNothing)
-import Data.Map.Strict as Map
 
 -- ------------------------------------------------------------------------------------------------
 
@@ -33,14 +32,17 @@ data SourceRange = SourceRange
     , startCol :: !(Maybe Int)
     , endLine :: !(Maybe Int)
     , endCol :: !(Maybe Int)
-    } deriving (Show, Eq, Ord)
+    }
+    deriving (Show, Eq, Ord)
 
+-- | A source range that represents an unknown location.
 unknownSourceRange :: SourceRange
 unknownSourceRange = SourceRange Nothing Nothing Nothing Nothing
 
 srFromLineNo :: Int -> SourceRange
-srFromLineNo lineno = unknownSourceRange { startLine = Just lineno, endLine = Just lineno }
+srFromLineNo lineno = unknownSourceRange{startLine = Just lineno, endLine = Just lineno}
 
+-- | Return whether a given line number lies within a given source range.
 isLineInside :: SourceRange -> Int -> Bool
 isLineInside SourceRange{startLine = Just sl, endLine = Just el} num = num >= sl && num <= el
 isLineInside SourceRange{startLine = Just sl, endLine = Nothing} num = num >= sl
@@ -50,13 +52,12 @@ isLineInside _ _ = False
 singleify :: SourceRange -> Maybe (Int, ColumnRange)
 singleify sr
     | isNothing sl = Nothing
-    | sl == el = do
-        lineno <- sl 
+    | sl == endLine sr = do
+        lineno <- sl
         pure (lineno, (startCol sr, endCol sr))
     | otherwise = Nothing
   where
     sl = startLine sr
-    el = endLine sr
 
 -- ------------------------------------------------------------------------------------------------
 
@@ -94,6 +95,10 @@ instance Monoid ModuleFileMap where
 
 moduleFileMapFromList :: [(T.Text, FilePath)] -> ModuleFileMap
 moduleFileMapFromList = ModuleFileMap . Map.fromList
+
+-- | Return mappings between a module name and a filepath.
+moduleFileMapAssocs :: ModuleFileMap -> [(T.Text, FilePath)]
+moduleFileMapAssocs (ModuleFileMap map_) = Map.assocs map_
 
 -- | Convert a module to a FilePath.
 getPathOfModule :: ModuleFileMap -> T.Text -> Maybe FilePath

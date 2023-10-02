@@ -1,9 +1,10 @@
 module Main where
 
-import BrickUI (launchBrick)
 import qualified Data.Text as T
 import qualified Options.Applicative as Opt
+
 import qualified AppConfig
+import BrickUI (launchBrick)
 
 {-
 Old code for reference.
@@ -39,7 +40,6 @@ launch = do
     pure ()
 -}
 
-
 -- | Holds passed in command line options.
 data CmdOptions = CmdOptions
     { debugConsole :: !Bool
@@ -48,7 +48,8 @@ data CmdOptions = CmdOptions
     -- ^ Launch the TUI at this work directory.
     , target :: !T.Text
     -- ^ Build target, passed as the final argument to cmd.
-    } deriving (Show, Eq)
+    }
+    deriving (Show, Eq)
 
 parseOpts :: Opt.Parser CmdOptions
 parseOpts =
@@ -74,20 +75,21 @@ parseOpts =
             )
         <*> Opt.argument Opt.str (Opt.metavar "TARGET")
 
-fibty :: Int -> Int
-fibty 1 = 0
-fibty 2 = 1
-fibty n =
-    let left = fibty (n - 1)
-        right = fibty (n - 2)
-     in left + right
-
 main :: IO ()
 main = do
     opts <- Opt.execParser parserInfo
-    let conf = AppConfig.defaultConfig { AppConfig.getDebugConsoleOnStart = debugConsole opts }
+    let defConf = AppConfig.defaultConfig
+    let conf =
+            defConf
+                { AppConfig.getDebugConsoleOnStart = debugConsole opts
+                , AppConfig.getCmd =
+                    if T.null $ cmd opts
+                        then AppConfig.getCmd defConf
+                        else cmd opts
+                }
     launchBrick conf (target opts) (workdir opts)
   where
-    parserInfo = Opt.info
-        (Opt.helper Opt.<*> parseOpts)
-        (Opt.fullDesc <> Opt.progDesc "Program Description")
+    parserInfo =
+        Opt.info
+            (Opt.helper Opt.<*> parseOpts)
+            (Opt.fullDesc <> Opt.progDesc "Program Description")

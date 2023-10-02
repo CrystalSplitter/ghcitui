@@ -30,6 +30,8 @@ executable ghcitui
                         , microlens ^>= 0.4.13.1
                         , text-zipper ^>= 0.13
                         , optparse-applicative ^>= 0.18.1.0
+                        , word-wrap ^>= 0.5
+                        , transformers ^>= 0.6.1.0
     hs-source-dirs:     app
     other-modules:      BrickUI
                         , AppState
@@ -37,6 +39,7 @@ executable ghcitui
                         , Util
                         , AppInterpState
                         , AppConfig
+                        , Events
     ghc-options:        -rtsopts
                         -threaded
                         -Wall
@@ -63,6 +66,7 @@ library
                         , safe ^>= 0.3.19
                         , string-interpolate ^>= 0.3.2.1
                         , text ^>= 2.0.2
+                        , transformers ^>= 0.6.1.0
     exposed-modules:    Ghcid.Daemon
                         , Ghcid.ParseContext
                         , Loc

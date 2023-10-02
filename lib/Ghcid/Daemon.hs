@@ -1,8 +1,10 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
 
 module Ghcid.Daemon
-    ( startup
+    ( DaemonError
+    , startup
     , BreakpointArg (..)
     , InterpState (..)
     , continue
@@ -22,15 +24,15 @@ module Ghcid.Daemon
     , toggleBreakpointLine
     ) where
 
+import Control.Error
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.Trans.Class (lift)
 import qualified Data.Bifunctor as Bifunctor
-import Data.Maybe (catMaybes, mapMaybe)
 import Data.String.Interpolate (i)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Language.Haskell.Ghcid as Ghcid
-import Safe
 
 import qualified Ghcid.ParseContext as ParseContext
 import qualified Loc
@@ -42,26 +44,31 @@ newtype LogLevel = LogLevel Int
 -- | Determines where the daemon logs are written.
 data LogOutput = LogOutputStdOut | LogOutputStdErr | LogOutputFile FilePath
 
+data DaemonError
+    = UpdateBindingError T.Text
+    | UpdateBreakListError T.Text
+    deriving (Show, Eq)
+
 data InterpState a = InterpState
     { _ghci :: Ghcid.Ghci
     -- ^ GHCiD handle.
-    , func :: Maybe T.Text
+    , func :: !(Maybe T.Text)
     -- ^ Current pause position function name.
-    , pauseLoc :: Maybe Loc.FileLoc
+    , pauseLoc :: !(Maybe Loc.FileLoc)
     -- ^ Current pause position.
-    , moduleFileMap :: Loc.ModuleFileMap
+    , moduleFileMap :: !Loc.ModuleFileMap
     -- ^ Mapping between modules and their filepaths.
     , stack :: [T.Text]
     -- ^ Program stack (only available during tracing).
     , breakpoints :: [(Int, Loc.ModuleLoc)]
     -- ^ Currently set breakpoint locations.
-    , bindings :: [NameBinding.NameBinding T.Text]
+    , bindings :: Either DaemonError [NameBinding.NameBinding T.Text]
     -- ^ Current context value bindings.
-    , status :: Either T.Text a
+    , status :: !(Either T.Text a)
     -- ^ IDK? I had an idea here at one point.
-    , logLevel :: LogLevel
+    , logLevel :: !LogLevel
     -- ^ How much should we log?
-    , logOutput :: LogOutput
+    , logOutput :: !LogOutput
     -- ^ Where should we log to?
     , execHist :: [T.Text]
     -- ^ What's the execution history?
@@ -75,7 +82,7 @@ instance Show (InterpState a) where
                     let srcRngFmt :: String
                         srcRngFmt =
                             [i|{sourceRange=(#{startLine},#{startCol})-(#{endLine},#{endCol})}|]
-                     in [i|{func="#{func'}", filepath="#{filepath'}", #{srcRngFmt}}|]
+                     in [i|{func=#{func'}, filepath=#{filepath'}, #{srcRngFmt}}|]
                 _ -> "<unknown pause location>" :: String
          in msg
 
@@ -89,7 +96,7 @@ emptyInterpreterState ghci =
         , moduleFileMap = mempty
         , stack = mempty
         , breakpoints = mempty
-        , bindings = mempty
+        , bindings = Right mempty
         , status = Right mempty
         , logLevel = LogLevel 3
         , logOutput = LogOutputFile "/tmp/ghcitui.log"
@@ -114,7 +121,7 @@ startup
     -- ^ The newly created interpreter handle.
 startup cmd pwd = do
     (ghci, _) <- Ghcid.startGhci cmd (Just pwd) (\_ _ -> pure ())
-    pure $ emptyInterpreterState ghci
+    updateState (emptyInterpreterState ghci)
 
 -- | Shutdown GHCiD.
 quit :: InterpState a -> IO (InterpState a)
@@ -124,11 +131,24 @@ quit state = do
 
 -- | Update the interpreter state. Wrapper around other updaters.
 updateState :: (Monoid a) => InterpState a -> IO (InterpState a)
-updateState state =
-    updateContext state
-        >>= updateBindings
-        >>= updateModuleFileMap
-        >>= updateBreakList
+updateState state = do
+    -- Make a wrapper so we don't fail on updating bindings.
+    -- Parsing bindings turns out to be actually impossible to solve
+    -- with the current ':show bindings' output.
+    result <-
+        runExceptT
+            ( (lift . updateContext) state
+                >>= ( \s ->
+                        updateBindings s
+                            `catchE` (\er -> pure s{bindings = Left er})
+                    )
+                >>= lift . updateModuleFileMap
+                >>= updateBreakList
+            )
+    case result of
+        Right x -> pure x
+        Left (UpdateBindingError msg) -> error (T.unpack msg)
+        Left (UpdateBreakListError msg) -> error (T.unpack msg)
 
 -- | Update the current interpreter context.
 updateContext :: (Monoid a) => InterpState a -> IO (InterpState a)
@@ -146,33 +166,17 @@ updateContext state@InterpState{_ghci} = do
         then pure (emptyInterpreterState _ghci) -- We exited everything.
         else do
             let ctx = ParseContext.parseContext feedback
-            let unwrapLog f wrapper = case f ctx of
-                    Left (ParseContext.ParseError msg) -> do
-                        logError state msg
-                        pure Nothing
-                    Right x -> pure (wrapper x)
-            mFunc <- unwrapLog ParseContext.func Just
-            filepath <- case ParseContext.filepath ctx of
-                Left (ParseContext.ParseError msg) -> do
-                    logError state msg
-                    error ("parsing filepath: " <> T.unpack msg)
-                Right x -> pure x
-            sourceRange <- case ParseContext.pcSourceRange ctx of
-                Left (ParseContext.ParseError msg) -> do
-                    logError state msg
-                    pure Loc.unknownSourceRange
-                Right x -> pure x
-            pure
-                state
-                    { func = mFunc
-                    , pauseLoc = Just $ Loc.FileLoc filepath sourceRange
-                    }
+            case ctx of
+                ParseContext.PCError er -> error [i|Failed to update context: #{er}|]
+                ParseContext.PCNoContext -> pure (emptyInterpreterState _ghci)
+                ParseContext.PCContext ParseContext.ParseContextOut{func, filepath, pcSourceRange} ->
+                    pure state{func = Just func, pauseLoc = Just $ Loc.FileLoc filepath pcSourceRange}
 
 -- | Update the current local bindings.
-updateBindings :: InterpState a -> IO (InterpState a)
+updateBindings :: InterpState a -> ExceptT DaemonError IO (InterpState a)
 updateBindings state@InterpState{_ghci} = do
     logDebug state "|updateBindings| CMD: :show bindings\n"
-    msgs <- Ghcid.exec _ghci ":show bindings"
+    msgs <- liftIO (Ghcid.exec _ghci ":show bindings")
     let feedback = ParseContext.cleanResponse (T.pack <$> msgs)
     logDebug
         state
@@ -181,15 +185,21 @@ updateBindings state@InterpState{_ghci} = do
             <> "\n"
         )
     case ParseContext.parseBindings feedback of
-        Right bindings -> pure (state{bindings})
-        Left err -> error ("Failed to update bindings:\n" <> T.unpack err)
+        Right bindings -> pure (state{bindings = pure bindings})
+        Left er -> throwE (UpdateBindingError [i|Failed to update bindings: #{er}|])
 
 -- | Update the source map given any app state changes.
 updateModuleFileMap :: InterpState a -> IO (InterpState a)
 updateModuleFileMap state@InterpState{_ghci, moduleFileMap} = do
-    modules <- Ghcid.showModules _ghci
-    logDebug state ("|updateModuleFileMap| modules: " <> showT modules)
-    let addedModuleMap = Loc.moduleFileMapFromList (Bifunctor.first T.pack <$> modules)
+    logDebug state "updateModuleFileMap|: CMD: :show modules\n"
+    msgs <- Ghcid.exec _ghci ":show modules"
+    let packedMsgs = StringUtil.linesToText msgs
+    logDebug state [i||updateModuleFileMap|: OUT: #{packedMsgs}\n|]
+    modules <- case ParseContext.parseShowModules packedMsgs of
+        Right modules -> pure modules
+        Left er -> error $ show er
+    logDebug state [i||updateModuleFileMap| modules: #{modules}|]
+    let addedModuleMap = Loc.moduleFileMapFromList modules
     let newModuleFileMap = addedModuleMap <> moduleFileMap
     pure $ state{moduleFileMap = newModuleFileMap}
 
@@ -332,23 +342,21 @@ deleteBreakpointLine state loc =
                     )
                 pure state
 
-updateBreakList :: InterpState a -> IO (InterpState a)
+updateBreakList :: InterpState a -> ExceptT DaemonError IO (InterpState a)
 updateBreakList state@InterpState{_ghci} = do
     logDebug state "|updateBreakList| CMD: :show breaks\n"
-    msgs <- Ghcid.exec _ghci ":show breaks"
+    msgs <- liftIO (Ghcid.exec _ghci ":show breaks")
     logDebug
         state
         ( "|updateBreakList| OUT:\n"
             <> StringUtil.linesToText msgs
         )
     let response = ParseContext.cleanResponse (T.pack <$> msgs)
-    pure
-        ( case ParseContext.parseShowBreaks response of
-            Right breakpoints -> state{breakpoints}
-            Left err -> error ("parsing breakpoint list: " <> T.unpack err)
-        )
+    case ParseContext.parseShowBreaks response of
+        Right breakpoints -> pure state{breakpoints}
+        Left er -> throwE (UpdateBreakListError [i|parsing breakpoint list: #{er}|])
 
--- | Return a list of breakpoint line numbers in the current file.
+-- | Return a list of breakpoint line numbers in the currently paused file.
 getBpInCurModule :: InterpState a -> [Int]
 getBpInCurModule InterpState{pauseLoc = Nothing} = []
 getBpInCurModule s@InterpState{pauseLoc = Just Loc.FileLoc{filepath = fp}} = getBpInFile s fp

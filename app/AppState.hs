@@ -4,39 +4,41 @@ module AppState
     ( ActiveWindow (..)
     , AppConfig (..)
     , AppState (..)
+    , appInterpState
     , getSourceContents
-    , updateSourceMap
-    , resetSelectedLine
+    , getSourceLineCount
+    , listAvailableSources
+    , liveEditor'
     , makeInitialState
+    , resetSelectedLine
     , toggleActiveLineInterpreter
     , toggleBreakpointLine
-    , appInterpState
-    , liveEditor'
+    , updateSourceMap
     , writeDebugLog
-    , WindowSizes
     ) where
 
-import AppConfig (AppConfig (..), resolveStartupSplashPath)
-import qualified AppInterpState as AIS
 import qualified Brick.Widgets.Edit as BE
-import Control.Exception (SomeException, catch, try, IOException)
+import Control.Error (fromMaybe, lastMay)
+import Control.Exception (IOException, SomeException, catch, try)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Lens.Micro as Lens
 
+import AppConfig (AppConfig (..), resolveStartupSplashPath)
+import qualified AppInterpState as AIS
 import AppTopLevel (AppName (..))
 import Ghcid.Daemon (toggleBreakpointLine)
 import qualified Ghcid.Daemon as Daemon
-import qualified Loc 
+import qualified Loc
 
 data ActiveWindow = ActiveCodeViewport | ActiveLiveInterpreter | ActiveInfoWindow
     deriving (Show, Eq, Ord)
 
--- | Size information of the current GHCiDTUI main boxes.
+{- | Size information of the current GHCiDTUI main boxes.
 type WindowSizes = [(ActiveWindow, (Maybe Int, Maybe Int))]
+-}
 
 -- | Application state wrapper
 data AppState n = AppState
@@ -44,38 +46,47 @@ data AppState n = AppState
     -- ^ The interpreter handle.
     , getCurrentWorkingDir :: !FilePath
     -- ^ The current working directory.
-    , _appInterpState :: AIS.AppInterpState Text n
+    , _appInterpState :: AIS.AppInterpState T.Text n
     -- ^ The live interpreter state (separate from the interpreter
     -- and the app state itself.
     , interpLogs :: ![Text]
     , appConfig :: !AppConfig
     -- ^ Program launch configuration.
-    , activeWindow :: ActiveWindow
+    , activeWindow :: !ActiveWindow
     -- ^ Currently active window.
-    , selectedFile :: Maybe FilePath
+    , selectedFile :: !(Maybe FilePath)
     -- ^ Filepath to the current code viewport contents, if set.
-    , selectedLine :: Int
+    , selectedLine :: !Int
     -- ^ Currently selected line number. Resets back to 1.
-    , sourceMap :: Map.Map FilePath Text
+    , sourceMap :: Map.Map FilePath T.Text
     -- ^ Mapping between source filepaths and their contents.
-    , displayDebugConsoleLogs :: Bool
+    , displayDebugConsoleLogs :: !Bool
     -- ^ Whether to display debug Console logs.
     , debugConsoleLogs :: [Text]
     -- ^ Place for debug output to go.
-    , splashContents :: !(Maybe Text)
+    , splashContents :: !(Maybe T.Text)
     -- ^ Splash to show on start up.
     }
 
+newtype AppStateA m a = AppStateA {runAppStateA :: m a}
+
+instance (Functor m) => Functor (AppStateA m) where
+    fmap f appStateA = AppStateA (f <$> runAppStateA appStateA)
+
+instance (Applicative m) => Applicative (AppStateA m) where
+    pure appState = AppStateA (pure appState)
+    (<*>) = undefined
+
 -- | Lens for the App's interpreter box.
-appInterpState :: Lens.Lens' (AppState n) (AIS.AppInterpState Text n)
+appInterpState :: Lens.Lens' (AppState n) (AIS.AppInterpState T.Text n)
 appInterpState = Lens.lens _appInterpState (\x ais -> x{_appInterpState = ais})
 
 -- | Lens wrapper for zooming with handleEditorEvent.
-liveEditor' :: Lens.Lens' (AppState n) (BE.Editor Text n)
+liveEditor' :: Lens.Lens' (AppState n) (BE.Editor T.Text n)
 liveEditor' = appInterpState . AIS.liveEditor
 
 -- | Write a debug log entry.
-writeDebugLog :: Text -> AppState n -> AppState n
+writeDebugLog :: T.Text -> AppState n -> AppState n
 writeDebugLog lg s = s{debugConsoleLogs = lg : debugConsoleLogs s}
 
 toggleActiveLineInterpreter :: AppState n -> AppState n
@@ -85,20 +96,27 @@ toggleActiveLineInterpreter s@AppState{activeWindow} =
     toggleLogic ActiveLiveInterpreter = ActiveCodeViewport
     toggleLogic _ = ActiveLiveInterpreter
 
--- | Reset the code viewport selected line.
+-- | Reset the code viewport selected line to the pause location.
 resetSelectedLine :: AppState n -> AppState n
-resetSelectedLine s@AppState{interpState} = s{selectedFile, selectedLine}
+resetSelectedLine s@AppState{interpState} =
+    s{selectedFile = ourSelectedFile, selectedLine = ourSelectedLine}
   where
-    selectedLine :: Int
-    selectedLine = fromMaybe 1 (Loc.startLine . Loc.fSourceRange =<< interpState.pauseLoc)
-    selectedFile = Loc.filepath <$> interpState.pauseLoc
+    ourSelectedLine :: Int
+    ourSelectedLine =
+        fromMaybe
+            (selectedLine s)
+            (Loc.startLine . Loc.fSourceRange =<< interpState.pauseLoc)
+    ourSelectedFile = maybe (selectedFile s) (Just . Loc.filepath) interpState.pauseLoc
 
 -- | Update the source map given any app state changes.
 updateSourceMap :: AppState n -> IO (AppState n)
-updateSourceMap s =
-    case s.interpState.pauseLoc of
+updateSourceMap s = do
+    s' <- case selectedFile s of
+        Just sf -> updateSourceMapWithFilepath s sf
         Nothing -> pure s
-        (Just (Loc.FileLoc{filepath})) -> updateSourceMapWithFilepath s filepath
+    case s'.interpState.pauseLoc of
+        Nothing -> pure s'
+        (Just (Loc.FileLoc{filepath})) -> updateSourceMapWithFilepath s' filepath
 
 -- | Update the source map with a given filepath.
 updateSourceMapWithFilepath :: AppState n -> FilePath -> IO (AppState n)
@@ -114,15 +132,24 @@ updateSourceMapWithFilepath s filepath
                 let newSourceMap = Map.insert filepath contents s.sourceMap
                 pure s{sourceMap = newSourceMap}
 
+listAvailableSources :: AppState n -> [(T.Text, FilePath)]
+listAvailableSources = Loc.moduleFileMapAssocs . Daemon.moduleFileMap . interpState
+
 -- | Return the potential contents of the current paused file location.
-getSourceContents :: AppState n -> Maybe Text
+getSourceContents :: AppState n -> Maybe T.Text
 getSourceContents s = s.selectedFile >>= (s.sourceMap Map.!?)
+
+{- | Return the number of lines in the current source viewer.
+     Returns Nothing if there's no currently viewed source.
+-}
+getSourceLineCount :: AppState n -> Maybe Int
+getSourceLineCount s = length . T.lines <$> getSourceContents s
 
 -- | Initialise the state from the config.
 makeInitialState
     :: AppConfig
     -- ^ Start up config.
-    -> Text
+    -> T.Text
     -- ^ Daemon command prefix.
     -> FilePath
     -- ^ Workding directory.
@@ -136,18 +163,27 @@ makeInitialState appConfig target cwd = do
             (Just <$> (T.readFile =<< resolveStartupSplashPath appConfig))
             -- The splash is never critical.
             -- Just put nothing there if we can't find it.
-            (const (pure Nothing) :: SomeException -> IO (Maybe Text))
-    pure
+            (const (pure Nothing) :: SomeException -> IO (Maybe T.Text))
+    let selectedFile =
+            case Loc.moduleFileMapAssocs (Daemon.moduleFileMap interpState) of
+                -- If we just have one file, select that.
+                [(_, filepath)] -> Just filepath
+                -- If we have no module/file mappings, nothing must be selected.
+                [] -> Nothing
+                -- If we don't have a selected file, but we have a module loaded,
+                -- select the last one.
+                xs -> fmap snd (lastMay xs)
+    updateSourceMap
         AppState
             { interpState
             , getCurrentWorkingDir = cwd'
             , _appInterpState = AIS.emptyAppInterpState LiveInterpreter
-            , activeWindow = ActiveCodeViewport
+            , activeWindow = ActiveLiveInterpreter
             , appConfig
             , debugConsoleLogs = mempty
             , displayDebugConsoleLogs = getDebugConsoleOnStart appConfig
             , interpLogs = mempty
-            , selectedFile = Nothing
+            , selectedFile
             , selectedLine = 1
             , sourceMap = mempty
             , splashContents

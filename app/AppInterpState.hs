@@ -1,18 +1,18 @@
-module AppInterpState (
-    AppInterpState (..),
-    commandBuffer,
-    emptyAppInterpState,
-    futHistoryPos,
-    history,
-    isScanningHist,
-    liveEditor,
-    pastHistoryPos,
-    pushHistory,
-    viewLock,
-) where
+module AppInterpState
+    ( AppInterpState (_liveEditor, _viewLock, _commandBuffer, historyPos)
+    , commandBuffer
+    , emptyAppInterpState
+    , futHistoryPos
+    , history
+    , isScanningHist
+    , liveEditor
+    , pastHistoryPos
+    , pushHistory
+    , viewLock
+    ) where
 
 import qualified Brick.Widgets.Edit as BE
-import Data.Text (Text)
+import qualified Data.Text as T
 import Lens.Micro as Lens
 
 data AppInterpState s n = AppInterpState
@@ -25,18 +25,19 @@ data AppInterpState s n = AppInterpState
 
 -- | Lens accessor for the editor.
 liveEditor :: Lens.Lens' (AppInterpState s n) (BE.Editor s n)
-liveEditor = Lens.lens _liveEditor (\ais le -> ais { _liveEditor = le })
+liveEditor = Lens.lens _liveEditor (\ais le -> ais{_liveEditor = le})
 
+-- | Lens for the view lock setting
 viewLock :: Lens.Lens' (AppInterpState s n) Bool
-viewLock = Lens.lens _viewLock (\ais x -> ais { _viewLock = x })
+viewLock = Lens.lens _viewLock (\ais x -> ais{_viewLock = x})
 
 commandBuffer :: Lens.Lens' (AppInterpState s n) [s]
-commandBuffer = Lens.lens _commandBuffer (\ais x -> ais { _commandBuffer = x })
+commandBuffer = Lens.lens _commandBuffer (\ais x -> ais{_commandBuffer = x})
 
 history :: AppInterpState s n -> [[s]]
 history = _history
 
-emptyAppInterpState :: n -> AppInterpState Text n
+emptyAppInterpState :: n -> AppInterpState T.Text n
 emptyAppInterpState name =
     AppInterpState
         { _liveEditor = initInterpWidget name (Just 1)
@@ -45,6 +46,9 @@ emptyAppInterpState name =
         , _history = mempty
         , historyPos = 0
         }
+
+resetHistoryPos :: AppInterpState s n -> AppInterpState s n
+resetHistoryPos s = s{historyPos = 0}
 
 -- | Move interpreter history back.
 pastHistoryPos :: AppInterpState s n -> AppInterpState s n
@@ -61,9 +65,9 @@ isScanningHist AppInterpState{..} = historyPos /= 0
 futHistoryPos :: AppInterpState s n -> AppInterpState s n
 futHistoryPos s@AppInterpState{..} = s{historyPos = max 0 $ pred historyPos}
 
--- | Push a new value on to the history stack.
+-- | Push a new value on to the history stack and reset the position.
 pushHistory :: [s] -> AppInterpState s n -> AppInterpState s n
-pushHistory cmdLines s = s {_history = cmdLines : history s}
+pushHistory cmdLines s = resetHistoryPos $ s{_history = cmdLines : history s}
 
 -- | Create the initial live interpreter widget object.
 initInterpWidget
@@ -71,5 +75,5 @@ initInterpWidget
     -- ^ Editor name (must be a unique identifier).
     -> Maybe Int
     -- ^ Line height of the editor. Nothing for unlimited.
-    -> BE.Editor Text n
+    -> BE.Editor T.Text n
 initInterpWidget name height = BE.editorText name height mempty
