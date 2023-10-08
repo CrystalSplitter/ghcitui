@@ -1,13 +1,14 @@
 cabal-version:      2.4
 name:               ghcitui
 version:            0.1.0.0
-synopsis: A Terminal User Interface (TUI) for GHCi
+synopsis:           A Terminal User Interface (TUI) for GHCi
 
 -- A longer description of the package.
 -- description:
 
 bug-reports:        https://github.com/CrystalSplitter/ghcitui
 license:            BSD-3-Clause
+license-file:       LICENSE
 author:             Jordan 'CrystalSplitter' R AW
 maintainer:         gamewhizzit@gmail.com
 
@@ -20,18 +21,17 @@ extra-source-files: CHANGELOG.md
 executable ghcitui
     main-is:            Main.hs
     build-depends:      base ^>= 4.17
-                        , containers ^>= 0.6.7
                         , brick
-                        , errors ^>= 2.3.0
-                        , text ^>= 2.0.2
+                        , containers
+                        , errors
                         , ghcitui
-                        , vty
-                        , safe ^>= 0.3.19
                         , microlens ^>= 0.4.13.1
-                        , text-zipper ^>= 0.13
                         , optparse-applicative ^>= 0.18.1.0
+                        , safe ^>= 0.3.19
+                        , text
+                        , text-zipper ^>= 0.13
+                        , vty
                         , word-wrap ^>= 0.5
-                        , transformers ^>= 0.6.1.0
     hs-source-dirs:     app
     other-modules:      BrickUI
                         , AppState
