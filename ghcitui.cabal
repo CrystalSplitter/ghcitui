@@ -3,8 +3,14 @@ name:               ghcitui
 version:            0.1.0.0
 synopsis:           A Terminal User Interface (TUI) for GHCi
 
--- A longer description of the package.
--- description:
+description:
+  A visual interface for GHCi debug mode inside the terminal.
+
+  Features:
+    * A source view window, with debug keybindings.
+    * Live variable bindings.
+    * Live loaded modules.
+    * An GHCi session in the current context.
 
 bug-reports:        https://github.com/CrystalSplitter/ghcitui
 license:            BSD-3-Clause
@@ -12,9 +18,13 @@ license-file:       LICENSE
 author:             Jordan 'CrystalSplitter' R AW
 maintainer:         gamewhizzit@gmail.com
 
+source-repository head
+    type:       git
+    location:   https://github.com/CrystalSplitter/ghcitui
+
 -- A copyright notice.
 -- copyright:
--- category:
+category: Debug
 extra-source-files: CHANGELOG.md
                     , LICENSE
 
@@ -30,7 +40,7 @@ executable ghcitui
                         , safe ^>= 0.3.19
                         , text
                         , text-zipper ^>= 0.13
-                        , vty
+                        , vty ^>= 5.38
                         , word-wrap ^>= 0.5
     hs-source-dirs:     app
     other-modules:      BrickUI
