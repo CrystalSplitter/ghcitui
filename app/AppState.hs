@@ -20,6 +20,7 @@ module AppState
 import qualified Brick.Widgets.Edit as BE
 import Control.Error (fromMaybe, lastMay)
 import Control.Exception (IOException, SomeException, catch, try)
+import Control.Monad.IO.Class (MonadIO (..))
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -68,14 +69,23 @@ data AppState n = AppState
     -- ^ Splash to show on start up.
     }
 
-newtype AppStateA m a = AppStateA {runAppStateA :: m a}
+newtype AppStateM m a = AppStateM {runAppStateM :: m a}
 
-instance (Functor m) => Functor (AppStateA m) where
-    fmap f appStateA = AppStateA (f <$> runAppStateA appStateA)
+instance (Functor m) => Functor (AppStateM m) where
+    fmap f appStateA = AppStateM (f <$> runAppStateM appStateA)
 
-instance (Applicative m) => Applicative (AppStateA m) where
-    pure appState = AppStateA (pure appState)
-    (<*>) = undefined
+instance (Applicative m) => Applicative (AppStateM m) where
+    pure appState = AppStateM (pure appState)
+    AppStateM appl <*> AppStateM tgt = AppStateM (appl <*> tgt)
+
+instance (Monad m) => Monad (AppStateM m) where
+    return = pure
+    AppStateM valM >>= f2 = AppStateM (valM >>= runAppStateM . f2)
+
+instance (MonadIO m) => MonadIO (AppStateM m) where
+    liftIO = AppStateM . liftIO
+
+type AppStateIO a = AppStateM IO a
 
 -- | Lens for the App's interpreter box.
 appInterpState :: Lens.Lens' (AppState n) (AIS.AppInterpState T.Text n)
@@ -157,7 +167,9 @@ makeInitialState
 makeInitialState appConfig target cwd = do
     let cwd' = if null cwd then "." else cwd
     let fullCmd = getCmd appConfig <> " " <> target
-    interpState <- Daemon.startup (T.unpack fullCmd) cwd'
+    interpState <- Daemon.run (Daemon.startup (T.unpack fullCmd) cwd') >>= \case
+        Right i -> pure i
+        Left er -> error (show er)
     splashContents <-
         catch
             (Just <$> (T.readFile =<< resolveStartupSplashPath appConfig))

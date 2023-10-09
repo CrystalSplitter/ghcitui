@@ -252,11 +252,13 @@ insertViewportBreakpoint appState =
                         <> T.unpack err
             liftIO $ fail errMsg
         Right ml -> do
+            let daemonOp = Daemon.toggleBreakpointLine appState.interpState (Daemon.ModLoc ml)
             interpState <-
-                liftIO $
-                    Daemon.toggleBreakpointLine
-                        appState.interpState
-                        (Daemon.ModLoc ml)
+                liftIO $ do
+                    eNewState <- Daemon.run daemonOp
+                    case eNewState of
+                        Right out -> pure out
+                        Left er -> error $ show er
             -- We may need to be smarter about this,
             -- because there's a chance that the module loc 'ml'
             -- doesn't actually refer to this viewed file?
@@ -274,23 +276,29 @@ invalidateLineCache = B.invalidateCache
 
 runDaemon
     :: (MonadIO m)
-    => (Daemon.InterpState () -> IO (Daemon.InterpState ()))
+    => (Daemon.InterpState () -> Daemon.DaemonIO (Daemon.InterpState ()))
     -> AppState n
     -> m (AppState n)
 runDaemon f appState =
     liftIO $ do
-        interp <- f appState.interpState
+        interp <-
+            (Daemon.run . f) appState.interpState >>= \case
+                Right out -> pure out
+                Left er -> error $ show er
         newState <- updateSourceMap appState{interpState = interp}
         pure (resetSelectedLine newState)
 
 runDaemon2
     :: (MonadIO m)
-    => (Daemon.InterpState () -> IO (Daemon.InterpState (), a))
+    => (Daemon.InterpState () -> Daemon.DaemonIO (Daemon.InterpState (), a))
     -> AppState n
     -> m (AppState n, a)
 runDaemon2 f appState =
     liftIO $ do
-        (interp, x) <- f appState.interpState
+        (interp, x) <-
+            (Daemon.run . f) appState.interpState >>= \case
+                Right out -> pure out
+                Left er -> error $ show er
         newState <- updateSourceMap appState{interpState = interp}
         pure (resetSelectedLine newState, x)
 
