@@ -73,7 +73,7 @@ parseOpts =
                 <> Opt.help "Set working dir."
                 <> Opt.value ""
             )
-        <*> Opt.argument Opt.str (Opt.metavar "TARGET")
+        <*> Opt.argument Opt.str (Opt.metavar "TARGET" <> Opt.value "")
 
 main :: IO ()
 main = do
