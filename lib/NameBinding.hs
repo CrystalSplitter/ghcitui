@@ -1,8 +1,8 @@
-module NameBinding where
+module NameBinding (NameBinding (..), BindingValue (..), renderNamesTxt) where
 
-import Data.Text (Text, concat)
-import Prelude hiding (concat)
+import qualified Data.Text as T
 
+-- | Value associated with a binding.
 data BindingValue a = Uneval | Evald a deriving (Eq, Show)
 
 -- | Represents a binding in the local context.
@@ -17,9 +17,9 @@ data NameBinding t = NameBinding
     deriving (Eq, Show)
 
 -- | Display the name bindings together into a group of Texts.
-renderNamesTxt :: (Functor f, Foldable f) => f (NameBinding Text) -> f Text
+renderNamesTxt :: (Functor f, Foldable f) => f (NameBinding T.Text) -> f T.Text
 renderNamesTxt ns = onEach <$> ns
   where
     valueRender Uneval = "_"
     valueRender (Evald v) = v
-    onEach nb = concat [bName nb, " :: ", bType nb, " = ", valueRender . bValue $ nb]
+    onEach nb = T.concat [bName nb, " :: ", bType nb, " = ", valueRender . bValue $ nb]

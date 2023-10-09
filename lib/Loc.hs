@@ -1,20 +1,28 @@
 module Loc
-    ( ColumnRange
-    , ModuleLoc (..)
+    ( -- * Code locations within a file
+
+    -- Types and functions for handling code within a single file or module.
+      SourceRange (..)
+    , HasSourceRange (..)
+    , unknownSourceRange
+    , isLineInside
+    , srFromLineNo
+    , singleify
+    , ColumnRange
+
+      -- * Code in files and modules
+      -- $modulesAndFiles
     , FileLoc (..)
+    , ModuleLoc (..)
+    , toModuleLoc
+    , toFileLoc
+
+      -- * Converting between modules and source files
     , ModuleFileMap
     , moduleFileMapFromList
     , moduleFileMapAssocs
     , getPathOfModule
     , getModuleOfPath
-    , toModuleLoc
-    , toFileLoc
-    , HasSourceRange (..)
-    , SourceRange (..)
-    , unknownSourceRange
-    , isLineInside
-    , srFromLineNo
-    , singleify
     ) where
 
 import Data.Map.Strict as Map
@@ -27,11 +35,16 @@ import Safe (headMay)
 -- | Range, mapping start to end.
 type ColumnRange = (Maybe Int, Maybe Int)
 
+-- | Represents a multi-line range from one character to another in a source file.
 data SourceRange = SourceRange
     { startLine :: !(Maybe Int)
+    -- ^ Start of the source range, inclusive.
     , startCol :: !(Maybe Int)
+    -- ^ Start column of the source range, inclusive.
     , endLine :: !(Maybe Int)
+    -- ^ End of the source range, inclusive.
     , endCol :: !(Maybe Int)
+    -- ^ End column of the source range, EXCLUSIVE.
     }
     deriving (Show, Eq, Ord)
 
@@ -39,10 +52,16 @@ data SourceRange = SourceRange
 unknownSourceRange :: SourceRange
 unknownSourceRange = SourceRange Nothing Nothing Nothing Nothing
 
+-- | Create a source range from a single line number.
 srFromLineNo :: Int -> SourceRange
 srFromLineNo lineno = unknownSourceRange{startLine = Just lineno, endLine = Just lineno}
 
--- | Return whether a given line number lies within a given source range.
+{- | Return whether a given line number lies within a given source range.
+
+>>> let sr = (srFromLineNo 1) { endLine = 3 }
+>>> isLineInside sr <$> [0, 1, 2, 3, 5]
+[False, True, True, True, False]
+-}
 isLineInside :: SourceRange -> Int -> Bool
 isLineInside SourceRange{startLine = Just sl, endLine = Just el} num = num >= sl && num <= el
 isLineInside SourceRange{startLine = Just sl, endLine = Nothing} num = num >= sl
@@ -60,6 +79,12 @@ singleify sr
     sl = startLine sr
 
 -- ------------------------------------------------------------------------------------------------
+
+{- $modulesAndFiles
+GHCi talks about code ranges in both files and modules inconsistently. 'ModuleLoc' and
+'FileLoc' are types representing each code range. In general, locations as 'FileLoc's
+are easier to manage.
+-}
 
 -- | Location in a module (may not have a corresponding source file).
 data ModuleLoc = ModuleLoc
@@ -93,6 +118,7 @@ instance Semigroup ModuleFileMap where
 instance Monoid ModuleFileMap where
     mempty = ModuleFileMap mempty
 
+-- | Create a 'ModuleFileMap' from an association list.
 moduleFileMapFromList :: [(T.Text, FilePath)] -> ModuleFileMap
 moduleFileMapFromList = ModuleFileMap . Map.fromList
 
@@ -100,11 +126,11 @@ moduleFileMapFromList = ModuleFileMap . Map.fromList
 moduleFileMapAssocs :: ModuleFileMap -> [(T.Text, FilePath)]
 moduleFileMapAssocs (ModuleFileMap map_) = Map.assocs map_
 
--- | Convert a module to a FilePath.
+-- | Convert a module to a @FilePath@.
 getPathOfModule :: ModuleFileMap -> T.Text -> Maybe FilePath
 getPathOfModule (ModuleFileMap ms) mod' = Map.lookup mod' ms
 
--- | Convert a FilePath to a Module.
+-- | Convert a @FilePath@ to a module name.
 getModuleOfPath :: ModuleFileMap -> FilePath -> Maybe T.Text
 getModuleOfPath (ModuleFileMap ms) fp = headMay [mod' | (mod', fp') <- Map.assocs ms, fp' == fp]
 

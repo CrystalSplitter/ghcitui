@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Tui (loadFileSrc, getSurroundingSrc) where
+module Tui () where
 
-{-
+{- | Deprecated
 
 This file probably either doesn't need to exist, or should be merged with
 BrickUI.hs
