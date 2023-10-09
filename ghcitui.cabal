@@ -59,6 +59,7 @@ executable ghcitui
                         -Wredundant-constraints
     default-language:   Haskell2010
     default-extensions: DuplicateRecordFields
+                        LambdaCase
                         OverloadedRecordDot
                         OverloadedStrings
                         RecordWildCards
