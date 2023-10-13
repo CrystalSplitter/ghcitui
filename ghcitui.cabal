@@ -17,16 +17,15 @@ license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Jordan 'CrystalSplitter' R AW
 maintainer:         gamewhizzit@gmail.com
-
-source-repository head
-    type:       git
-    location:   https://github.com/CrystalSplitter/ghcitui
-
 -- A copyright notice.
 -- copyright:
 category: Debug
 extra-source-files: CHANGELOG.md
                     , LICENSE
+
+source-repository head
+    type:       git
+    location:   https://github.com/CrystalSplitter/ghcitui
 
 executable ghcitui
     main-is:            Main.hs
@@ -34,7 +33,7 @@ executable ghcitui
                         , brick
                         , containers
                         , errors
-                        , ghcitui
+                        , ghcitui-lib
                         , microlens ^>= 0.4.13.1
                         , optparse-applicative ^>= 0.18.1.0
                         , safe ^>= 0.3.19
@@ -65,7 +64,7 @@ executable ghcitui
                         RecordWildCards
                         TupleSections
 
-library
+library ghcitui-lib
     hs-source-dirs:     lib
     build-depends:      base ^>= 4.17
                         , array ^>= 0.5.4.0
@@ -83,9 +82,7 @@ library
                         , Loc
                         , StringUtil
                         , NameBinding
-    ghc-options:        -rtsopts
-                        -threaded
-                        -Wall
+    ghc-options:        -Wall
                         -Wcompat
                         -Wincomplete-record-updates
                         -Wpartial-fields
@@ -96,3 +93,13 @@ library
                         OverloadedStrings
                         RecordWildCards
                         TupleSections
+
+test-suite spec
+    hs-source-dirs:     test
+    main-is:            Spec.hs
+    type:               exitcode-stdio-1.0
+    build-depends:      base ^>= 4.17
+                        , hspec ^>= 2.11.5
+                        , ghcitui-lib
+    other-modules:      LocSpec
+    default-language:   Haskell2010
