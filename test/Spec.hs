@@ -3,9 +3,9 @@ module Main where
 import Test.Hspec
 
 import qualified LocSpec
-import qualified StringUtilSpec
+import qualified UtilSpec
 
 main :: IO ()
 main = hspec $ do
     LocSpec.spec
-    StringUtilSpec.spec
+    UtilSpec.spec
