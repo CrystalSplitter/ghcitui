@@ -226,7 +226,8 @@ codeViewportDraw' s sourceData = composedTogether
         _loadedWindowSize = error "loadedWindowSize not implemented"
         withLineNums = zip [startLineno ..]
 
-    breakpoints = maybe [] (Daemon.getBpInFile (interpState s)) (selectedFile s)
+    breakpoints :: [Int]
+    breakpoints = maybe mempty (\f -> Daemon.getBpInFile f (interpState s)) (selectedFile s)
     gutterInfoForLine lineno =
         GutterInfo
             { isStoppedHere =

@@ -45,7 +45,7 @@ handleInterpreterEvent ev =
             let cmd = T.strip (T.unlines (editorContents appState))
 
             -- Actually run the command.
-            (newAppState1, output) <- runDaemon2 (`Daemon.execCleaned` cmd) appState
+            (newAppState1, output) <- runDaemon2 (Daemon.execCleaned cmd) appState
 
             let newEditor =
                     BE.applyEdit
@@ -74,7 +74,7 @@ handleInterpreterEvent ev =
             let cmd = T.strip (T.unlines (editorContents appState))
             (newAppState1, _output) <-
                 runDaemon2
-                    (`Daemon.execCleaned` (":complete " <> cmd))
+                    (Daemon.execCleaned (":complete " <> cmd))
                     appState
             B.put newAppState1
         B.VtyEvent (V.EvKey (V.KChar 'x') [V.MCtrl]) ->
@@ -252,7 +252,7 @@ insertViewportBreakpoint appState =
                         <> T.unpack err
             liftIO $ fail errMsg
         Right ml -> do
-            let daemonOp = Daemon.toggleBreakpointLine appState.interpState (Daemon.ModLoc ml)
+            let daemonOp = Daemon.toggleBreakpointLine (Daemon.ModLoc ml) appState.interpState
             interpState <-
                 liftIO $ do
                     eNewState <- Daemon.run daemonOp
