@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module StringUtilSpec where
+module UtilSpec where
 
 import Test.Hspec
 
