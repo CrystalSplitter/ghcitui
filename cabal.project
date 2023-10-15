@@ -1,0 +1,17 @@
+packages: *.cabal
+verbose: 3
+run-tests: True
+jobs: $ncpus
+
+-- By default, we want to build for release
+-- and devs may disable this as a local configuration.
+executable-stripping: True
+library-stripping: True
+optimization: 2
+
+-- Since this is meant as a standalone executable, we *should* statically link.
+-- However, I don't seem to have all the system dependencies needed for this.
+--
+-- For the space-conscious and those making use of shared
+-- haskell libs, set this to False regardless.
+executable-static: False
