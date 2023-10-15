@@ -29,7 +29,7 @@ source-repository head
 
 executable ghcitui
     main-is:            Main.hs
-    build-depends:      base ^>= 4.17
+    build-depends:      base >= 4.17 && < 5
                         , brick
                         , containers
                         , errors
@@ -66,7 +66,7 @@ executable ghcitui
 
 library ghcitui-lib
     hs-source-dirs:     lib
-    build-depends:      base ^>= 4.17
+    build-depends:      base >= 4.17 && < 5
                         , array ^>= 0.5.4.0
                         , containers ^>= 0.6.7
                         , errors ^>= 2.3.0
@@ -98,7 +98,7 @@ test-suite spec
     hs-source-dirs:     test
     main-is:            Spec.hs
     type:               exitcode-stdio-1.0
-    build-depends:      base ^>= 4.17
+    build-depends:      base >= 4.17 && < 5
                         , hspec ^>= 2.11.5
                         , ghcitui-lib
     other-modules:      LocSpec
