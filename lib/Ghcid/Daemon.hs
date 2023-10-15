@@ -58,9 +58,10 @@ import System.IO (stderr)
 import qualified Ghcid.ParseContext as ParseContext
 import qualified Loc
 import qualified NameBinding
-import qualified StringUtil
+import Util (showT)
+import qualified Util
 
-newtype LogLevel = LogLevel Int
+newtype LogLevel = LogLevel Int deriving (Eq, Ord, Show)
 
 -- | Determines where the daemon logs are written.
 data LogOutput = LogOutputStdOut | LogOutputStdErr | LogOutputFile FilePath

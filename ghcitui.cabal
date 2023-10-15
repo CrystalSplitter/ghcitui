@@ -80,7 +80,7 @@ library ghcitui-lib
     exposed-modules:    Ghcid.Daemon
                         , Ghcid.ParseContext
                         , Loc
-                        , StringUtil
+                        , Util
                         , NameBinding
     ghc-options:        -Wall
                         -Wcompat
@@ -102,4 +102,5 @@ test-suite spec
                         , hspec ^>= 2.11.5
                         , ghcitui-lib
     other-modules:      LocSpec
+                        , UtilSpec
     default-language:   Haskell2010

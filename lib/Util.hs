@@ -1,6 +1,6 @@
-module StringUtil (linesToText, splitBy) where
+module Util (showT, splitBy, linesToText) where
 
-import Data.Text (pack, Text, breakOn, drop, length)
+import Data.Text (Text, breakOn, drop, length, pack)
 import Prelude hiding (drop, length)
 
 -- | Split text based on a delimiter.
@@ -10,6 +10,7 @@ splitBy
     -> Text
     -- ^ Text to split on.
     -> [Text]
+splitBy "" source = [source]
 splitBy delim source =
     case breakOn delim source of
         (l, "") -> [l]
@@ -18,3 +19,7 @@ splitBy delim source =
 -- | Convert Strings to Text.
 linesToText :: [String] -> Text
 linesToText = pack . Prelude.unlines
+
+-- | 'show' but to Text.
+showT :: (Show a) => a -> Text
+showT = pack . show

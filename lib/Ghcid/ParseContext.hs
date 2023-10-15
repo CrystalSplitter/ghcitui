@@ -27,15 +27,12 @@ import Text.Regex.TDFA (MatchResult (..), (=~~))
 
 import qualified Loc
 import NameBinding
-import StringUtil
+import Util
 
 ghcidPrompt :: T.Text
 ghcidPrompt = "#~GHCID-START~#"
 
 newtype ParseError = ParseError T.Text deriving (Show, Eq)
-
-showT :: (Show a) => a -> T.Text
-showT = T.pack . show
 
 -- | Output record datatype for 'parseContext'.
 data ParseContextOut = ParseContextOut
