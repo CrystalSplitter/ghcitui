@@ -170,6 +170,8 @@ prependGutter :: GutterInfo -> B.Widget n -> B.Widget n
 prependGutter gi line = makeGutter gi <+> line
 
 -- | Create the gutter section for a given line (formed from GutterInfo).
+-- This should be cached wherever since there can be thousands of these
+-- in a source.
 makeGutter :: GutterInfo -> B.Widget n
 makeGutter GutterInfo{..} =
     lineNoWidget <+> spaceW <+> stopColumn <+> breakColumn <+> spaceW
@@ -222,12 +224,14 @@ codeViewportDraw' s sourceData = composedTogether
         -- We probably can use vpContentSize somehow to ensure
         -- that we don't bother looking at source beyond
         -- the render window.
+        -- _loadedWindowSize = error "loadedWindowSize not implemented"
         startLineno = 1
-        _loadedWindowSize = error "loadedWindowSize not implemented"
         withLineNums = zip [startLineno ..]
 
     breakpoints :: [Int]
     breakpoints = maybe mempty (\f -> Daemon.getBpInFile f (interpState s)) (selectedFile s)
+
+    gutterInfoForLine :: Int -> GutterInfo
     gutterInfoForLine lineno =
         GutterInfo
             { isStoppedHere =
@@ -240,10 +244,14 @@ codeViewportDraw' s sourceData = composedTogether
             , gutterDigitWidth = Util.getNumDigits $ length splitSourceData
             , isSelected = lineno == s.selectedLine
             }
+
+    prefixLineDefault' :: (Int, B.Widget n) -> B.Widget n
     prefixLineDefault' (lineno, w) =
         prependGutter
             (gutterInfoForLine lineno)
             w
+
+    originalLookupLineNo :: Int
     originalLookupLineNo =
         s.interpState.pauseLoc
             >>= Loc.startLine . Loc.sourceRange
