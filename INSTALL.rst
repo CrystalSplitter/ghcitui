@@ -4,24 +4,9 @@ BUILD AND INSTALLATION
 
 This document describes how to build, install, and test the GHCiTUI program.
 
------------------
-Table of contents
------------------
-
-#. Working with the source
-
-   #. Getting the source
-   #. Building
-   #. Testing
-   #. Installing
-
-======================
-Working with the source
-======================
-
-GHCiTUI is configured, built, and installed through ``cabal``:
-https://www.haskell.org/cabal/. Cabal can be installed through the ``ghcup``
-command line tool. Familiarity with Cabal is not necessary to build GHCiTUI.
+GHCiTUI is configured, built, and installed through `Cabal`_. Cabal can be
+installed through the ``ghcup`` command line tool. Familiarity with Cabal
+is not necessary to build GHCiTUI.
 
 ------------------
 Getting the source
@@ -46,32 +31,16 @@ Or HTTPS:
 Building
 --------
 
-We should set up the Cabal project file with some configuration options before
-we build.
-
-.. code:: shell
-
-  # User install (installs to $HOME/.cabal)
-  cabal configure -O --installdir="$HOME/.cabal" -j
-
-  # Global install (will require administrator privileges to actually install)
-  cabal configure -O -j
-
-For contributors, you'll want to enable some useful testing flags, so run this
-after the above:
-
-.. code:: shell
-
-  cabal configure \
-    -O \
-    --test-option='--color' \
-    --test-show-details=streaming
-
-Now we can build the GHCiTUI executable
+The GHCiTUI cabal configurations defaults to release builds in the
+`cabal.project`_. Therefore, we can just run...
 
 .. code:: shell
 
   cabal build
+
+To build the release binary. Contributors may find it useful
+to make their own ``cabal.project.local`` with ``cabal configure`` while
+debugging.
 
 -------
 Testing
@@ -92,8 +61,12 @@ To install:
 
 .. code:: shell
 
-  # Per-user install (recommended)
+  # Per-user install (Nix-Style)
   cabal install
 
-  # Install globally (note this may require root privileges)
-  cabal install --install-method=copy --installdir=/usr/local/bin
+
+By default, this will place the ``ghcitui`` executable in
+``$HOME/.cabal/bin``.
+
+.. _Cabal: https://www.haskell.org/cabal/
+.. _cabal.project: ./cabal.project
