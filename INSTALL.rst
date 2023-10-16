@@ -80,7 +80,7 @@ Testing
 Unit tests are run automatically during installation, but you can also run them
 manually with:
 
-.. cabal:: shell
+.. code:: shell
 
   cabal test
 
