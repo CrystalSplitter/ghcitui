@@ -36,37 +36,15 @@ The GHCiTUI cabal configurations defaults to release builds in the
 
 .. code:: shell
 
-  cabal build
-
-To build the release binary. Contributors may find it useful
-to make their own ``cabal.project.local`` with ``cabal configure`` while
-debugging.
-
--------
-Testing
--------
-
-Unit tests are run automatically during installation, but you can also run them
-manually with:
-
-.. code:: shell
-
-  cabal test
-
-----------
-Installing
-----------
-
-To install:
-
-.. code:: shell
-
-  # Per-user install (Nix-Style)
-  cabal install
-
+  cabal build  # Build library and executable (release mode)
+  cabal test  # Run tests (optional)
+  cabal install  # Per-user install (Nix-Style)
 
 By default, this will place the ``ghcitui`` executable in
 ``$HOME/.cabal/bin``.
+
+Contributors may find it useful to make their own
+``cabal.project.local`` with ``cabal configure`` while debugging.
 
 .. _Cabal: https://www.haskell.org/cabal/
 .. _cabal.project: ./cabal.project
