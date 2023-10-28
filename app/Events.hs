@@ -167,10 +167,8 @@ replaceCommandBuffer replacement s = Lens.set liveEditor' newEditor s
 -- TODO: Handle mouse events?
 handleViewportEvent :: B.BrickEvent AppName e -> B.EventM AppName (AppState AppName) ()
 handleViewportEvent (B.VtyEvent (V.EvKey key ms))
-    | key == V.KChar 'q' = do
-        appState <- B.get
-        _ <- liftIO $ Daemon.quit appState.interpState
-        B.halt
+    | key `elem` [V.KChar 'q', V.KEsc] = do
+        confirmQuit
     | key == V.KChar 's' = do
         appState <- B.get
         newState <- Daemon.step `runDaemon` appState
@@ -234,6 +232,15 @@ moveSelectedLineBy movAmnt = do
     invalidateCachedLine oldLineno
     invalidateCachedLine newLineno
     B.put newState
+
+-- TODO: Actually confirm using a dialogue. This is a little tricky,
+-- as we may need to store the dialogue structure in the app state.
+-- For now, just quit cleanly.
+confirmQuit :: B.EventM AppName (AppState AppName) ()
+confirmQuit = do
+    appState <- B.get
+    _ <- liftIO $ Daemon.quit appState.interpState
+    B.halt
 
 invalidateCachedLine :: Int -> B.EventM AppName s ()
 invalidateCachedLine lineno = B.invalidateCacheEntry (CodeViewportLine lineno)
