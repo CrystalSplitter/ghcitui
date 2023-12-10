@@ -254,9 +254,7 @@ exec cmd state@InterpState{_ghci} = do
 
 -- | 'exec', but throw out any messages.
 execMuted :: (Monoid a) => T.Text -> InterpState a -> ExceptT DaemonError IO (InterpState a)
-execMuted cmd state = do
-    (newState, _) <- exec cmd state
-    pure newState
+execMuted cmd state = fst <$> exec cmd state
 
 -- | 'exec', but fully clean the message from prompt.
 execCleaned
