@@ -26,6 +26,8 @@ See [INSTALLATION.rst](./INSTALL.rst) for details.
 
 ## Basic Usage
 
+For detailed usage, please see the [manual](./MANUAL.rst).
+
 ### Starting the TUI
 
 GHCiTUI runs a repl in the current directory by default.
