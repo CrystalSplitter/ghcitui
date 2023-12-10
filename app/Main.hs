@@ -29,14 +29,14 @@ parseOpts =
             ( Opt.long "cmd"
                 <> Opt.short 'c'
                 <> Opt.metavar "CMD"
-                <> Opt.help "Command to start the internal interpreter."
+                <> Opt.help "Command to start the internal interpreter"
                 <> Opt.value ""
             )
         <*> Opt.strOption
             ( Opt.long "workdir"
                 <> Opt.short 'C'
                 <> Opt.metavar "DIR"
-                <> Opt.help "Set working dir."
+                <> Opt.help "Set working dir"
                 <> Opt.value ""
             )
         <*> Opt.argument Opt.str (Opt.metavar "TARGET" <> Opt.value "")
@@ -44,7 +44,6 @@ parseOpts =
 main :: IO ()
 main = do
     opts <- Opt.execParser parserInfo
-    let defConf = AppConfig.defaultConfig
     let conf =
             defConf
                 { AppConfig.getDebugConsoleOnStart = debugConsole opts
@@ -55,7 +54,7 @@ main = do
                 }
     launchBrick conf (target opts) (workdir opts)
   where
-    parserInfo =
-        Opt.info
-            (Opt.helper <*> parseOpts)
-            (Opt.fullDesc <> Opt.progDesc "Program Description")
+    programName = "ghcitui"
+    programDescription = Opt.progDesc (programName <> ": A TUI interface for GHCi")
+    parserInfo = Opt.info (Opt.helper <*> parseOpts) (Opt.fullDesc <> programDescription)
+    defConf = AppConfig.defaultConfig
