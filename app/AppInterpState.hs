@@ -3,7 +3,7 @@ module AppInterpState
     , commandBuffer
     , emptyAppInterpState
     , futHistoryPos
-    , history
+    , cmdHistory
     , isScanningHist
     , liveEditor
     , pastHistoryPos
@@ -18,32 +18,40 @@ import Lens.Micro as Lens
 data AppInterpState s n = AppInterpState
     { _liveEditor :: BE.Editor s n
     , _viewLock :: !Bool
+    -- ^ Whether we're locked to the bottom of the interpreter (True) window or not (False).
     , _commandBuffer :: [s]
-    , _history :: [[s]]
+    -- ^ The text currently typed into the editor, but not yet executed or in the history.
+    , _cmdHistory :: [[s]]
     , historyPos :: !Int
     }
 
--- | Lens accessor for the editor.
+-- | Lens accessor for the editor. See '_liveEditor'.
 liveEditor :: Lens.Lens' (AppInterpState s n) (BE.Editor s n)
 liveEditor = Lens.lens _liveEditor (\ais le -> ais{_liveEditor = le})
 
--- | Lens for the view lock setting
+-- | Lens for the view lock setting. See '_viewLock'.
 viewLock :: Lens.Lens' (AppInterpState s n) Bool
 viewLock = Lens.lens _viewLock (\ais x -> ais{_viewLock = x})
 
+-- | Lens for the current contents of the command line buffer. See '_commandBuffer'.
 commandBuffer :: Lens.Lens' (AppInterpState s n) [s]
 commandBuffer = Lens.lens _commandBuffer (\ais x -> ais{_commandBuffer = x})
 
-history :: AppInterpState s n -> [[s]]
-history = _history
+-- | Return the interpreter command history.
+cmdHistory :: AppInterpState s n -> [[s]]
+cmdHistory = _cmdHistory
 
-emptyAppInterpState :: n -> AppInterpState T.Text n
+-- | Create a base interpreter state.
+emptyAppInterpState
+    :: n
+    -- ^ Name for the 'Brick.Editor'.
+    -> AppInterpState T.Text n
 emptyAppInterpState name =
     AppInterpState
         { _liveEditor = initInterpWidget name (Just 1)
         , _viewLock = True
         , _commandBuffer = mempty
-        , _history = mempty
+        , _cmdHistory = mempty
         , historyPos = 0
         }
 
@@ -55,7 +63,7 @@ pastHistoryPos :: AppInterpState s n -> AppInterpState s n
 pastHistoryPos s@AppInterpState{..} =
     -- Note we do want it to stop at length _history, not length _history - 1
     -- because 0 is not the beginning of the history, it's the commandBuffer.
-    s{historyPos = min (length _history) $ succ historyPos}
+    s{historyPos = min (length _cmdHistory) $ succ historyPos}
 
 -- | Are we currently viewing past contents?
 isScanningHist :: AppInterpState s n -> Bool
@@ -67,7 +75,7 @@ futHistoryPos s@AppInterpState{..} = s{historyPos = max 0 $ pred historyPos}
 
 -- | Push a new value on to the history stack and reset the position.
 pushHistory :: [s] -> AppInterpState s n -> AppInterpState s n
-pushHistory cmdLines s = resetHistoryPos $ s{_history = cmdLines : history s}
+pushHistory cmdLines s = resetHistoryPos $ s{_cmdHistory = cmdLines : cmdHistory s}
 
 -- | Create the initial live interpreter widget object.
 initInterpWidget
