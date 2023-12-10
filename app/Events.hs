@@ -137,7 +137,7 @@ handleInterpreterEvent ev =
         | i <= 0 = s ^. appInterpState . AIS.commandBuffer
         | otherwise = atDef (lastDef [] hist) hist (i - 1)
       where
-        hist = s ^. appInterpState . Lens.to AIS.history
+        hist = s ^. appInterpState . Lens.to AIS.cmdHistory
 
     leaveInterpreter = B.put . toggleActiveLineInterpreter =<< B.get
 
