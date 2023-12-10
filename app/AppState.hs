@@ -37,7 +37,7 @@ import qualified Loc
 data ActiveWindow = ActiveCodeViewport | ActiveLiveInterpreter | ActiveInfoWindow
     deriving (Show, Eq, Ord)
 
-{- | Size information of the current GHCiDTUI main boxes.
+{- | Size information of the current GHCiTUI main boxes.
 type WindowSizes = [(ActiveWindow, (Maybe Int, Maybe Int))]
 -}
 
@@ -167,9 +167,10 @@ makeInitialState
 makeInitialState appConfig target cwd = do
     let cwd' = if null cwd then "." else cwd
     let fullCmd = getCmd appConfig <> " " <> target
-    interpState <- Daemon.run (Daemon.startup (T.unpack fullCmd) cwd') >>= \case
-        Right i -> pure i
-        Left er -> error (show er)
+    interpState <-
+        Daemon.run (Daemon.startup (T.unpack fullCmd) cwd') >>= \case
+            Right i -> pure i
+            Left er -> error (show er)
     splashContents <-
         catch
             (Just <$> (T.readFile =<< resolveStartupSplashPath appConfig))
