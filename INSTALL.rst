@@ -15,14 +15,14 @@ Getting the source
 Currently the source code is hosted on https://github.com. You can check out
 the source code using ``git`` with SSH:
 
-.. code:: shell
+.. code-block:: shell
 
   # SSH (for contributors, requires SSH set up)
   git clone git@github.com:CrystalSplitter/ghcitui.git
 
 Or HTTPS:
 
-.. code:: shell
+.. code-block:: shell
 
   # HTTPS
   git clone https://github.com/CrystalSplitter/ghcitui.git
@@ -34,7 +34,7 @@ Building
 The GHCiTUI cabal configurations defaults to release builds in the
 `cabal.project`_. Therefore, we can just run...
 
-.. code:: shell
+.. code-block:: shell
 
   cabal build  # Build library and executable (release mode)
   cabal test  # Run tests (optional)

@@ -1,10 +1,58 @@
-======
-MANUAL
-======
+==============
+GHCiTUI MANUAL
+==============
 
 ------------
-INTRODUCTION
+CLI Synopsis
 ------------
+
+.. code-block::
+
+  Usage: ghcitui [-d|--debug-console] [-c|--cmd CMD] [-C|--workdir DIR] [TARGET]
+
+    ghcitui: A TUI interface for GHCi
+
+  Available options:
+    -h,--help                Show this help text
+    -d,--debug-console       Display the debug console
+    -c,--cmd CMD             Command to start the internal interpreter
+    -C,--workdir DIR         Set working dir
+
+---------------------
+Starting and Stopping
+---------------------
+
+********
+Starting
+********
+
+GHCiTUI runs a REPL in the current directory by default. By default, it
+launches ``cabal repl``.
+
+.. code-block:: bash
+
+  $ cd your/cabal/project/root/directory
+  $ ghcitui
+
+You can specify another starting directory with the ``-C <DIR>`` flag.
+
+
+.. code-block:: bash
+
+  $ ghcitui -C some/other/directory
+
+
+********
+Stopping
+********
+
+To quit, press ``<ESC>`` or ``q`` while in the code viewport panel to quit.
+While not in the code viewport panel, you may press ``<ESC>`` to get to the
+viewport panel.
+
+------
+Layout
+------
 
 GHCiTUI is an in-terminal viewer for GHCi. The TUI is broken up into three
 primary panels, with some additional auxiliary panels for special use cases:
@@ -27,30 +75,29 @@ primary panels, with some additional auxiliary panels for special use cases:
 and toggle breakpoints among other operations in this panel.
 
 **Live Interpreter:** This panel shows the GHCi/REPL passthrough. You can
-enter expressions and GHCi commands here like you would normally.
+enter expressions and GHCi commands here like you would normally, with some
+additional keybindings.
 
 **Info:** This panel displays miscellaneous info about whatever is
-currently running. For example, it can display the current bindings and loaded
-modules.
+currently running. For example, it can display the current bindings, loaded
+modules, and the current program trace.
 
-----------
-Navigation
-----------
+-----------
+Keybindings
+-----------
 
-------------------
-Keybinds Reference
-------------------
+At this time, keybindings are hardcoded. This will hopefully change in the
+future with a keybinding configuration file.
 
 *************
 Source Viewer
 *************
 
-- ``Ctrl+x``: to toggle between the Source Viewer and the Live Interpreter
+- ``Ctrl+x``: Toggle between the Source Viewer and the Live Interpreter
   panels.
 - ``<Esc>``, ``q``: Quit.
-- ``Up``, ``k``: Move the selected line up. (``j`` and ``k`` from Vim keybinds)
-- ``Down``, ``j``: Move the selected line down. (``j`` and ``k`` from Vim
-  keybinds).
+- ``Up``, ``k``: Move the cursor up. (``j`` and ``k`` from Vim keybinds)
+- ``Down``, ``j``: Move the cursor down. (``j`` and ``k`` from Vim keybinds).
 - ``PgUp``: Move the source viewer one page up.
 - ``PgDown``: Move the source viewer one page down.
 - ``b``: Toggle breakpoint at current line. Not every line in a source file can
@@ -58,4 +105,18 @@ Source Viewer
 - ``s``: Advance execution by one step. Same as the ``:step`` in GHCi.
 - ``c``: Advance execution until next breakpoint. Same as ``:continue`` in
   GHCi.
+- ``t``: Advance execution until next breakpoint under tracing. Same as
+  ``:trace`` in GHCi.
 
+****************
+Live Interpreter
+****************
+
+- ``Ctrl+x``: Toggle between the Source Viewer and the Live Interpreter
+  panels.
+- ``<Esc>``: Switch to Source Viewer.
+- ``Up``: Scroll back in time through the REPL command history.
+- ``Down``: Scroll forward in time through the REPL command history.
+- ``PgUp``: Scroll the Live Interpreter window one page up.
+- ``PgDown``: Scroll the Live Interpreter window one page down.
+- ``<Enter>``: Enter a command to the REPL.
