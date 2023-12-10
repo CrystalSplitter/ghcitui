@@ -179,6 +179,11 @@ handleViewportEvent (B.VtyEvent (V.EvKey key ms))
         newState <- Daemon.continue `runDaemon` appState
         invalidateLineCache
         B.put newState
+    | key == V.KChar 't' = do
+        appState <- B.get
+        newState <- Daemon.trace `runDaemon` appState
+        invalidateLineCache
+        B.put newState
     | key == V.KChar 'b' = do
         appState <- B.get
         insertViewportBreakpoint appState

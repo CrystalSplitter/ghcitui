@@ -122,7 +122,11 @@ infoBox appState =
         . B.hLimit 30
         . B.padRight B.Max
         . B.padBottom B.Max
-        $ bindingBox <=> B.hBorderWithLabel (B.txt "Modules") <=> moduleBox
+        $ bindingBox
+            <=> B.hBorderWithLabel (B.txt "Modules")
+            <=> moduleBox
+            <=> B.hBorderWithLabel (B.txt "Trace History")
+            <=> traceBox
   where
     wrapSettings =
         Wrap.defaultWrapSettings
@@ -131,11 +135,13 @@ infoBox appState =
             , Wrap.fillStrategy = Wrap.FillIndent 2
             }
     intState = interpState appState
+
     bindingBox :: B.Widget AppName
     bindingBox = case NameBinding.renderNamesTxt <$> Daemon.bindings intState of
         Left _ -> B.txt "<Error displaying bindings>"
         Right [] -> B.txt " " -- Can't be an empty widget due to padding?
         Right bs -> B.vBox (B.txtWrapWith wrapSettings <$> bs)
+
     moduleBox :: B.Widget AppName
     moduleBox =
         if null mfmAssocs
@@ -144,6 +150,15 @@ infoBox appState =
       where
         mfmAssocs = Loc.moduleFileMapAssocs (Daemon.moduleFileMap intState)
         mkModEntryWidget (modName, fp) = B.txt (modName <> " > " <> T.pack fp)
+
+    traceBox :: B.Widget AppName
+    traceBox =
+        if null traceHist
+            then B.txt "<No trace>"
+            else B.vBox $ B.txt <$> traceHist
+      where
+        traceHist :: [T.Text]
+        traceHist = Daemon.traceHist intState
 
 -- | Mark the label if the first arg is True.
 markLabel :: Bool -> T.Text -> B.Widget a
@@ -169,9 +184,10 @@ data GutterInfo = GutterInfo
 prependGutter :: GutterInfo -> B.Widget n -> B.Widget n
 prependGutter gi line = makeGutter gi <+> line
 
--- | Create the gutter section for a given line (formed from GutterInfo).
--- This should be cached wherever since there can be thousands of these
--- in a source.
+{- | Create the gutter section for a given line (formed from GutterInfo).
+This should be cached wherever since there can be thousands of these
+in a source.
+-}
 makeGutter :: GutterInfo -> B.Widget n
 makeGutter GutterInfo{..} =
     lineNoWidget <+> spaceW <+> stopColumn <+> breakColumn <+> spaceW

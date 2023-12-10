@@ -11,6 +11,7 @@ module Ghcid.ParseContext
     , parseBindings
     , parseShowBreaks
     , parseShowModules
+    , isHistoryFailureMsg
     , cleanResponse
     , ParseError (..)
     ) where
@@ -24,6 +25,7 @@ import Data.String.Interpolate (i)
 import qualified Data.Text as T
 import Safe (readNote)
 import Text.Regex.TDFA (MatchResult (..), (=~~))
+import qualified Text.Regex.TDFA as Regex
 
 import qualified Loc
 import NameBinding
@@ -253,6 +255,17 @@ parseBindings t
         it :: () = ()
     -}
     reg = "([a-z_][[:alnum:]_.']*) +:: +(.*) += +(.*)" :: T.Text
+
+-- | Whether a given text line represents a failed history lookup.
+isHistoryFailureMsg :: T.Text -> Bool
+isHistoryFailureMsg text = (reg `Regex.match` text) || (reg2 `Regex.match` text)
+  where
+    execOption = Regex.ExecOption False
+    compOption = Regex.defaultCompOpt{Regex.caseSensitive = False}
+    makeRegex :: T.Text -> Regex.Regex
+    makeRegex = Regex.makeRegexOpts compOption execOption
+    reg = makeRegex "not +stopped +at +a +breakpoint"
+    reg2 = makeRegex "empty history(\\.)?"
 
 {- | Clean up GHCID exec returned messages/feedback.
 

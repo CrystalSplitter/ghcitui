@@ -13,6 +13,7 @@ module Ghcid.Daemon
         , logLevel
         , logOutput
         , execHist
+        , traceHist
         )
     , emptyInterpreterState
 
@@ -37,6 +38,10 @@ module Ghcid.Daemon
     , toggleBreakpointLine
     , setBreakpointLine
     , deleteBreakpointLine
+
+      -- * Tracing
+    , trace
+    , history
 
       -- * Misc
     , isExecuting
@@ -87,8 +92,10 @@ data InterpState a = InterpState
     -- ^ How much should we log?
     , logOutput :: !LogOutput
     -- ^ Where should we log to?
-    , execHist :: [T.Text]
-    -- ^ What's the execution history?
+    , execHist :: ![T.Text]
+    -- ^ What's the execution history? Note: different from trace history.
+    , traceHist :: ![T.Text]
+    -- ^ Trace history.
     }
 
 instance Show (InterpState a) where
@@ -120,6 +127,7 @@ emptyInterpreterState ghci =
         , logLevel = LogLevel 3
         , logOutput = LogOutputFile "/tmp/ghcitui.log"
         , execHist = mempty
+        , traceHist = mempty
         }
 
 -- | Append a string to the interpreter's history.
@@ -157,6 +165,7 @@ updateState state =
         >>= updateBindingsWithErrorHandling
         >>= updateModuleFileMap
         >>= updateBreakList
+        >>= updateTraceHistory
   where
     -- Make a wrapper so we don't fail on updating bindings.
     -- Parsing bindings turns out to be actually impossible to solve
@@ -218,6 +227,13 @@ updateModuleFileMap state@InterpState{_ghci, moduleFileMap} = do
     let newModuleFileMap = addedModuleMap <> moduleFileMap
     pure $ state{moduleFileMap = newModuleFileMap}
 
+updateTraceHistory :: InterpState a -> DaemonIO (InterpState a)
+updateTraceHistory state = do
+    (newState, eTraceHist) <- history state
+    pure $ case eTraceHist of
+        Left _ -> newState{traceHist = []}
+        Right traceHist -> newState{traceHist}
+
 -- | Analogue to @:step@.
 step :: (Monoid a) => InterpState a -> ExceptT DaemonError IO (InterpState a)
 step = execMuted ":step"
@@ -232,9 +248,32 @@ stepInto
     -- ^ New interpreter state.
 stepInto func = execMuted (":step " <> func)
 
+{- | Analogue to @:history@.
+
+Returns either the 'Left' error messager, or 'Right': list the trace breakpoints.
+-}
+history :: InterpState a -> DaemonIO (InterpState a, Either T.Text [T.Text])
+history state = do
+    msgStrs <- liftIO $ Ghcid.exec (_ghci state) ":history"
+    let msgs = T.lines (ParseContext.cleanResponse (T.pack <$> msgStrs))
+    logDebug [i||history| OUT:\n#{T.unlines msgs}|] state
+    case msgs of
+        [] -> throwE (GenericError "':history' unexpectedly returned nothing.")
+        [oneLine] ->
+            if ParseContext.isHistoryFailureMsg oneLine
+                then -- This is probably an error message. Set it as such.
+                    pure (state, Left oneLine)
+                else -- This is a real trace entry... maybe.
+                    pure (state, Right [oneLine])
+        _ -> pure (state, Right msgs)
+
 -- | Analogue to @:continue@. Throws out any messages.
 continue :: (Monoid a) => InterpState a -> DaemonIO (InterpState a)
 continue = execMuted ":continue"
+
+-- | Analogue to @:trace@, with no arguments. Throws out any messages.
+trace :: (Monoid a) => InterpState a -> DaemonIO (InterpState a)
+trace = execMuted ":trace"
 
 -- | Analogue to @:load <filepath>@. Throws out any messages.
 load :: (Monoid a) => FilePath -> InterpState a -> DaemonIO (InterpState a)
