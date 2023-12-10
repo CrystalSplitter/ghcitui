@@ -63,6 +63,7 @@ executable ghcitui
                         OverloadedStrings
                         RecordWildCards
                         TupleSections
+                        MonoLocalBinds
 
 library ghcitui-lib
     hs-source-dirs:     lib
@@ -93,6 +94,7 @@ library ghcitui-lib
                         OverloadedStrings
                         RecordWildCards
                         TupleSections
+                        MonoLocalBinds
 
 test-suite spec
     hs-source-dirs:     test
