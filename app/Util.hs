@@ -21,3 +21,16 @@ formatDigits
 formatDigits spacing num = pack (replicate amount ' ') <> pack (show num)
   where
     amount = spacing - getNumDigits num
+
+clamp
+    :: (Ord a)
+    => (a, a)
+    -- ^ The minimum and maximum (inclusive)
+    -> a
+    -- ^ Value to clamp
+    -> a
+    -- ^ Result
+clamp (mi, mx) v
+    | v < mi = mi
+    | v > mx = mx
+    | otherwise = v
