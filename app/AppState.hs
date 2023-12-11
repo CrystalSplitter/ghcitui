@@ -4,6 +4,11 @@ module AppState
     ( ActiveWindow (..)
     , AppConfig (..)
     , AppState (..)
+    , WidgetSizes
+    , changeInfoWidgetSize
+    , changeReplWidgetSize
+    , getInfoWidth
+    , getReplHeight
     , appInterpState
     , getSourceContents
     , getSourceLineCount
@@ -33,15 +38,29 @@ import AppTopLevel (AppName (..))
 import Ghcid.Daemon (toggleBreakpointLine)
 import qualified Ghcid.Daemon as Daemon
 import qualified Loc
+import qualified Util
 
 data ActiveWindow = ActiveCodeViewport | ActiveLiveInterpreter | ActiveInfoWindow
     deriving (Show, Eq, Ord)
 
-{- | Size information of the current GHCiTUI main boxes.
-type WindowSizes = [(ActiveWindow, (Maybe Int, Maybe Int))]
--}
+data MaxState = NoMaxState | Maximised | Minimised
 
--- | Application state wrapper
+-- | Size information of the current GHCiTUI main boxes.
+data WidgetSizes = WidgetSizes
+    { _wsInfoWidth :: !Int
+    , _wsInfoMaxState :: !MaxState
+    , _wsReplHeight :: !Int
+    , _wsReplMaxState :: !MaxState
+    }
+
+{- | Application state wrapper.
+
+Contains information about the UI and configuration. It also holds a
+handle to the actual interpreter under the hood, but on the high level
+it should not hold anything internal to GHCi or GHCiD.
+
+Prefer to create this with 'makeInitialState'.
+-}
 data AppState n = AppState
     { interpState :: Daemon.InterpState ()
     -- ^ The interpreter handle.
@@ -61,6 +80,9 @@ data AppState n = AppState
     -- ^ Currently selected line number. Resets back to 1.
     , sourceMap :: Map.Map FilePath T.Text
     -- ^ Mapping between source filepaths and their contents.
+    , _currentWidgetSizes :: WidgetSizes
+    -- ^ Current window/box/panel sizes (since it can change). Do not edit
+    -- directly.
     , displayDebugConsoleLogs :: !Bool
     -- ^ Whether to display debug Console logs.
     , debugConsoleLogs :: [Text]
@@ -94,6 +116,15 @@ appInterpState = Lens.lens _appInterpState (\x ais -> x{_appInterpState = ais})
 -- | Lens wrapper for zooming with handleEditorEvent.
 liveEditor' :: Lens.Lens' (AppState n) (BE.Editor T.Text n)
 liveEditor' = appInterpState . AIS.liveEditor
+
+currentWidgetSizes :: Lens.Lens' (AppState n) WidgetSizes
+currentWidgetSizes = Lens.lens _currentWidgetSizes (\x cws -> x{_currentWidgetSizes = cws})
+
+wsInfoWidth :: Lens.Lens' WidgetSizes Int
+wsInfoWidth = Lens.lens _wsInfoWidth (\x ipw -> x{_wsInfoWidth = ipw})
+
+wsReplHeight :: Lens.Lens' WidgetSizes Int
+wsReplHeight = Lens.lens _wsReplHeight (\x rh -> x{_wsReplHeight = rh})
 
 -- | Write a debug log entry.
 writeDebugLog :: T.Text -> AppState n -> AppState n
@@ -155,6 +186,30 @@ getSourceContents s = s.selectedFile >>= (s.sourceMap Map.!?)
 getSourceLineCount :: AppState n -> Maybe Int
 getSourceLineCount s = length . T.lines <$> getSourceContents s
 
+changeInfoWidgetSize :: Int -> AppState n -> AppState n
+changeInfoWidgetSize amnt s =
+    Lens.set
+        (currentWidgetSizes . wsInfoWidth)
+        -- Do not let the min go too low (<=2), because this causes a memory leak in Brick?
+        (Util.clamp (10, 120) (getInfoWidth s + amnt))
+        s
+
+changeReplWidgetSize :: Int -> AppState n -> AppState n
+changeReplWidgetSize amnt s =
+    Lens.set
+        (currentWidgetSizes . wsReplHeight)
+        -- Do not let the min go too low, because the box disappears then.
+        (Util.clamp (1, 80) (getReplHeight s + amnt))
+        s
+
+-- | Return the info box's desired width in character columns.
+getInfoWidth :: AppState n -> Int
+getInfoWidth = _wsInfoWidth . _currentWidgetSizes
+
+-- | Return the REPL (interactive interpreter)'s box in lines.
+getReplHeight :: AppState n -> Int
+getReplHeight = _wsReplHeight . _currentWidgetSizes
+
 -- | Initialise the state from the config.
 makeInitialState
     :: AppConfig
@@ -199,5 +254,12 @@ makeInitialState appConfig target cwd = do
             , selectedFile
             , selectedLine = 1
             , sourceMap = mempty
+            , _currentWidgetSizes =
+                WidgetSizes
+                    { _wsInfoWidth = 30
+                    , _wsInfoMaxState = NoMaxState
+                    , _wsReplHeight = 11 -- 10 plus 1 for the entry line.
+                    , _wsReplMaxState = NoMaxState
+                    }
             , splashContents
             }

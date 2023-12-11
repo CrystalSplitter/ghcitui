@@ -82,6 +82,14 @@ additional keybindings.
 currently running. For example, it can display the current bindings, loaded
 modules, and the current program trace.
 
+----------
+Navigation
+----------
+
+At any point in time, you can revert back to the Source Viewer panel with the
+``<Esc>`` key, and you can always quit by hitting ``<Esc>`` in the Source Viewer
+panel.
+
 -----------
 Keybindings
 -----------
@@ -100,6 +108,7 @@ Source Viewer
 - ``Down``, ``j``: Move the cursor down. (``j`` and ``k`` from Vim keybinds).
 - ``PgUp``: Move the source viewer one page up.
 - ``PgDown``: Move the source viewer one page down.
+- ``+``, ``-``: Increase/decrease the Info panel size.
 - ``b``: Toggle breakpoint at current line. Not every line in a source file can
   have a breakpoint placed on it.
 - ``s``: Advance execution by one step. Same as the ``:step`` in GHCi.
@@ -108,9 +117,9 @@ Source Viewer
 - ``t``: Advance execution until next breakpoint under tracing. Same as
   ``:trace`` in GHCi.
 
-****************
-Live Interpreter
-****************
+***********************
+Live Interpreter (REPL)
+***********************
 
 - ``Ctrl+x``: Toggle between the Source Viewer and the Live Interpreter
   panels.
@@ -119,4 +128,7 @@ Live Interpreter
 - ``Down``: Scroll forward in time through the REPL command history.
 - ``PgUp``: Scroll the Live Interpreter window one page up.
 - ``PgDown``: Scroll the Live Interpreter window one page down.
+- ``Ctrl+n``: Toggle scrolling mode.
+- ``+``, ``-`` while in scrolling mode: Increase/decrease the live
+  panel size.
 - ``<Enter>``: Enter a command to the REPL.

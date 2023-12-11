@@ -28,6 +28,7 @@ import AppState
     , liveEditor'
     , makeInitialState
     )
+import qualified AppState
 import AppTopLevel (AppName (..))
 import qualified Events
 import qualified Ghcid.Daemon as Daemon
@@ -58,6 +59,7 @@ appDraw s =
                 else "Interpreter (Scrolling)"
             )
 
+    -- For seeing the source code.
     viewportBox :: B.Widget AppName
     viewportBox =
         B.borderWithLabel sourceLabel
@@ -72,16 +74,16 @@ appDraw s =
                 Just h -> B.padBottom B.Max (w <=> B.hBorder <=> B.txt h)
                 _ -> w
 
+    -- For the REPL.
     interpreterBox :: B.Widget AppName
     interpreterBox =
         B.borderWithLabel interpreterLabel
-            . B.vLimit (displayLimit + 1) -- Plus one for the current line.
+            . B.vLimit (AppState.getReplHeight s)
             . B.withVScrollBars B.OnRight
             . B.viewport LiveInterpreterViewport B.Vertical
             $ previousOutput <=> lockToBottomOnViewLock promptLine
       where
         enableCursor = True
-        displayLimit = 10
         previousOutput =
             if null s.interpLogs
                 then B.emptyWidget
@@ -119,7 +121,7 @@ appDraw s =
 infoBox :: AppS -> B.Widget AppName
 infoBox appState =
     B.borderWithLabel (B.txt "Info")
-        . B.hLimit 30
+        . B.hLimit (AppState.getInfoWidth appState)
         . B.padRight B.Max
         . B.padBottom B.Max
         $ bindingBox
