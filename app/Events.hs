@@ -38,10 +38,10 @@ handleEvent ev = do
 
 -- | Handle events when the interpreter (live GHCi) is selected.
 handleInterpreterEvent :: B.BrickEvent AppName e -> B.EventM AppName (AppState AppName) ()
-handleInterpreterEvent ev =
+handleInterpreterEvent ev = do
+    appState <- B.get
     case ev of
         B.VtyEvent (V.EvKey V.KEnter []) -> do
-            appState <- B.get
             let cmd = T.strip (T.unlines (editorContents appState))
 
             -- Actually run the command.
@@ -70,7 +70,6 @@ handleInterpreterEvent ev =
             B.invalidateCache
         B.VtyEvent (V.EvKey (V.KChar '\t') []) -> do
             -- Tab completion?
-            appState <- B.get
             let cmd = T.strip (T.unlines (editorContents appState))
             (newAppState1, _output) <-
                 runDaemon2
@@ -94,7 +93,6 @@ handleInterpreterEvent ev =
                             <> (showT . AIS.historyPos . getAis $ s)
                         )
                         s
-            appState <- B.get
             let appState' =
                     wDebug
                         . replaceCommandBufferWithHist -- Display the history.
@@ -103,7 +101,6 @@ handleInterpreterEvent ev =
                         $ appState
             B.put appState'
         B.VtyEvent (V.EvKey V.KDown _) -> do
-            appState <- B.get
             let wDebug s =
                     writeDebugLog
                         ( "Handled Down; historyPos is "
@@ -120,10 +117,22 @@ handleInterpreterEvent ev =
             B.vScrollPage (B.viewportScroll LiveInterpreterViewport) B.Down
         B.VtyEvent (V.EvKey V.KPageUp _) -> do
             B.vScrollPage (B.viewportScroll LiveInterpreterViewport) B.Up
-            appState <- B.get
             B.put (Lens.set (appInterpState . AIS.viewLock) False appState)
+        B.VtyEvent (V.EvKey (V.KChar 'n') [V.MCtrl]) -> do
+            -- Invert the viewLock.
+            B.put (Lens.over (appInterpState . AIS.viewLock) not appState)
+
+        -- While scrolling (viewLock disabled), allow resizing the live interpreter history.
+        B.VtyEvent (V.EvKey (V.KChar '+') [])
+            | not (appState ^. appInterpState . AIS.viewLock) -> do
+                B.put (AppState.changeReplWidgetSize 1 appState)
+        B.VtyEvent (V.EvKey (V.KChar '-') [])
+            | not (appState ^. appInterpState . AIS.viewLock) -> do
+                B.put (AppState.changeReplWidgetSize (-1) appState)
+
+        -- Actually handle keystrokes.
         ev' -> do
-            appState <- B.get
+            -- When typing, bring us back down to the terminal.
             B.put (Lens.set (appInterpState . AIS.viewLock) True appState)
             -- Actually handle text input commands.
             B.zoom liveEditor' $ BE.handleEditorEvent ev'
@@ -192,6 +201,13 @@ handleViewportEvent (B.VtyEvent (V.EvKey key ms))
         moveSelectedLineBy 1
     | key `elem` [V.KUp, V.KChar 'k'] = do
         moveSelectedLineBy (-1)
+    -- '+' and '-' move the middle border.
+    | key == V.KChar '+' && null ms = do
+        appState <- B.get
+        B.put (AppState.changeInfoWidgetSize 1 appState)
+    | key == V.KChar '-' && null ms = do
+        appState <- B.get
+        B.put (AppState.changeInfoWidgetSize (-1) appState)
     | key == V.KPageDown = do
         appState <- B.get
         mViewport <- B.lookupViewport CodeViewport
