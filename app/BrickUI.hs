@@ -12,6 +12,7 @@ import qualified Brick.Widgets.Center as B
 import Brick.Widgets.Core ((<+>), (<=>))
 import qualified Brick.Widgets.Edit as BE
 import Control.Error (headMay)
+import Data.Bifunctor (second)
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import qualified Graphics.Vty as V
@@ -118,54 +119,94 @@ appDraw s =
                         $ logDisplay
             else B.emptyWidget
 
+-- | Draw the info panel.
 infoBox :: AppS -> B.Widget AppName
 infoBox appState =
-    B.borderWithLabel (B.txt "Info")
+    B.borderWithLabel infoLabel
         . B.hLimit (AppState.getInfoWidth appState)
         . B.padRight B.Max
         . B.padBottom B.Max
         $ bindingBox
-            <=> B.hBorderWithLabel (B.txt "Modules")
+            <=> B.hBorderWithLabel modulesLabel
             <=> moduleBox
             <=> B.hBorderWithLabel (B.txt "Trace History")
-            <=> traceBox
+            <=> drawTraceBox appState
   where
-    wrapSettings =
-        Wrap.defaultWrapSettings
-            { Wrap.preserveIndentation = True
-            , Wrap.breakLongWords = True
-            , Wrap.fillStrategy = Wrap.FillIndent 2
-            }
+    isActive = activeWindow appState == ActiveInfoWindow
+    infoLabel = B.txt "Info"
+    modulesLabel =
+        markLabel
+            isActive
+            "Modules"
+            (if activeWindow appState /= ActiveLiveInterpreter then "[M]" else mempty)
     intState = interpState appState
 
     bindingBox :: B.Widget AppName
-    bindingBox = case NameBinding.renderNamesTxt <$> Daemon.bindings intState of
-        Left _ -> B.txt "<Error displaying bindings>"
-        Right [] -> B.txt " " -- Can't be an empty widget due to padding?
-        Right bs -> B.vBox (B.txtWrapWith wrapSettings <$> bs)
+    bindingBox = B.viewport BindingViewport B.Vertical contents
+      where
+        contents = case NameBinding.renderNamesTxt <$> Daemon.bindings intState of
+            Left _ -> B.txt "<Error displaying bindings>"
+            Right [] -> B.txt " " -- Can't be an empty widget due to padding?
+            Right bs -> B.vBox (B.txtWrapWith wrapSettings <$> bs)
+        wrapSettings =
+            Wrap.defaultWrapSettings
+                { Wrap.preserveIndentation = True
+                , Wrap.breakLongWords = True
+                , Wrap.fillStrategy = Wrap.FillIndent 2
+                }
 
     moduleBox :: B.Widget AppName
     moduleBox =
-        if null mfmAssocs
-            then B.txt "<No module mappings>"
-            else foldr1 (<=>) (mkModEntryWidget <$> mfmAssocs)
+        B.cached ModulesViewport $
+            if null mfmAssocs
+                then B.hCenter $ B.txt "<No module mappings>"
+                else
+                    B.withVScrollBars B.OnRight
+                        . B.viewport ModulesViewport B.Vertical
+                        $ B.vBox moduleEntries
       where
         mfmAssocs = Loc.moduleFileMapAssocs (Daemon.moduleFileMap intState)
-        mkModEntryWidget (modName, fp) = B.txt (modName <> " > " <> T.pack fp)
+        moduleEntries =
+            (\(idx, t) -> highlightSelectedModWidget (isSelected idx && isActive) t)
+                . second mkModEntryWidget
+                <$> zip [0 ..] mfmAssocs
+          where
+            mkModEntryWidget (modName, fp) = B.txt (modName <> " = " <> T.pack fp)
+            isSelected idx = AppState.getSelectedModuleInInfoPanel appState == idx
 
-    traceBox :: B.Widget AppName
-    traceBox =
+            highlightSelectedModWidget :: Bool -> B.Widget n -> B.Widget n
+            highlightSelectedModWidget cond modW =
+                if cond
+                    then
+                        B.visible
+                            . B.withAttr (B.attrName "selected-marker")
+                            $ (B.txt "> " <+> modW)
+                    else B.txt "  " <+> modW
+
+-- | Draw the trace box in the info panel.
+drawTraceBox :: AppState AppName -> B.Widget AppName
+drawTraceBox s = contents
+  where
+    contents =
         if null traceHist
             then B.txt "<No trace>"
             else B.vBox $ B.txt <$> traceHist
-      where
-        traceHist :: [T.Text]
-        traceHist = Daemon.traceHist intState
+    traceHist :: [T.Text]
+    traceHist = Daemon.traceHist (AppState.interpState s)
 
 -- | Mark the label if the first arg is True.
-markLabel :: Bool -> T.Text -> B.Widget a
-markLabel False labelTxt = B.txt (labelTxt <> " [Ctrl+x]")
-markLabel True labelTxt =
+markLabel
+    :: Bool
+    -- ^ Conditional to mark with.
+    -> T.Text
+    -- ^ Text to use for the label.
+    -> T.Text
+    -- ^ Addendum unfocused text.
+    -> B.Widget a
+markLabel False labelTxt focus = B.txt . appendFocusButton $ labelTxt
+  where
+    appendFocusButton t = if focus == mempty then t else t <> " " <> focus
+markLabel True labelTxt _ =
     B.withAttr (B.attrName "highlight") (B.txt ("#> " <> labelTxt <> " <#"))
 
 -- | Information used to compute the gutter status of each line.

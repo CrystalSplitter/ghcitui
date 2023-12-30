@@ -25,12 +25,54 @@ import Util (showT)
 
 -- | Handle any Brick event and update the state.
 handleEvent :: B.BrickEvent AppName e -> B.EventM AppName (AppState AppName) ()
+handleEvent (B.VtyEvent (V.EvResize _ _)) = B.invalidateCache
 handleEvent ev = do
     appState <- B.get
     case appState.activeWindow of
         ActiveCodeViewport -> handleViewportEvent ev
         ActiveLiveInterpreter -> handleInterpreterEvent ev
+-- -------------------------------------------------------------------------------------------------
+-- Info Event Handling
+----------------------------------------------------------------------------------------------------
+
+handleInfoEvent :: B.BrickEvent AppName e -> B.EventM AppName (AppState AppName) ()
+handleInfoEvent ev = do
+    appState <- B.get
+    case ev of
+        B.VtyEvent (V.EvKey key _ms)
+            | key `elem` [V.KChar 'j', V.KDown] -> do
+                B.put $ AppState.changeSelectedModuleInInfoPanel 1 appState
+            | key `elem` [V.KChar 'k', V.KUp] -> do
+                B.put $ AppState.changeSelectedModuleInInfoPanel (-1) appState
+            | key == V.KEnter || key == V.KChar 'o' -> do
+                let mayFp = AppState.filePathOfInfoSelectedModule appState
+                case mayFp of
+                    Just _ -> do
+                        updatedState <-
+                            liftIO
+                                ( AppState.updateSourceMap
+                                    appState
+                                        { selectedFile = mayFp
+                                        , selectedLine = 1
+                                        }
+                                )
+                        B.put updatedState
+                        invalidateLineCache
+                    Nothing -> pure ()
+            | key == V.KEsc || key == V.KChar 'C' -> do
+                B.put appState{activeWindow = ActiveCodeViewport}
+        B.VtyEvent (V.EvKey (V.KChar 'x') [V.MCtrl]) -> do
+            B.put appState{activeWindow = ActiveLiveInterpreter}
+        B.VtyEvent (V.EvKey (V.KChar '?') _) -> do
+            B.put appState{activeWindow = ActiveDialogHelp}
+
+        -- Resizing
+        B.VtyEvent (V.EvKey (V.KChar '-') []) -> do
+            B.put (AppState.changeInfoWidgetSize (-1) appState)
+        B.VtyEvent (V.EvKey (V.KChar '+') []) -> do
+            B.put (AppState.changeInfoWidgetSize 1 appState)
         _ -> pure ()
+    B.invalidateCacheEntry ModulesViewport
 
 -- -------------------------------------------------------------------------------------------------
 -- Interpreter Event Handling
@@ -204,10 +246,12 @@ handleViewportEvent (B.VtyEvent (V.EvKey key ms))
     -- '+' and '-' move the middle border.
     | key == V.KChar '+' && null ms = do
         appState <- B.get
-        B.put (AppState.changeInfoWidgetSize 1 appState)
+        B.put (AppState.changeInfoWidgetSize (-1) appState)
+        B.invalidateCacheEntry ModulesViewport
     | key == V.KChar '-' && null ms = do
         appState <- B.get
-        B.put (AppState.changeInfoWidgetSize (-1) appState)
+        B.put (AppState.changeInfoWidgetSize 1 appState)
+        B.invalidateCacheEntry ModulesViewport
     | key == V.KPageDown = do
         appState <- B.get
         mViewport <- B.lookupViewport CodeViewport
@@ -240,6 +284,10 @@ handleViewportEvent (B.VtyEvent (V.EvKey key ms))
         B.vScrollPage scroller B.Up
     | key == V.KChar 'x' && ms == [V.MCtrl] =
         B.put . toggleActiveLineInterpreter =<< B.get
+    | key == V.KChar 'M' = do
+        appState <- B.get
+        B.put appState{activeWindow = ActiveInfoWindow}
+        B.invalidateCacheEntry ModulesViewport
 handleViewportEvent _ = pure ()
 
 moveSelectedLineBy :: Int -> B.EventM AppName (AppState n) ()
