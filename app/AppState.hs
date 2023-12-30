@@ -6,12 +6,15 @@ module AppState
     , AppState (..)
     , WidgetSizes
     , changeInfoWidgetSize
-    , changeReplWidgetSize
     , getInfoWidth
     , getReplHeight
+    , changeReplWidgetSize
+    , getSelectedModuleInInfoPanel
+    , changeSelectedModuleInInfoPanel
     , appInterpState
     , getSourceContents
     , getSourceLineCount
+    , filePathOfInfoSelectedModule
     , listAvailableSources
     , liveEditor'
     , makeInitialState
@@ -23,7 +26,7 @@ module AppState
     ) where
 
 import qualified Brick.Widgets.Edit as BE
-import Control.Error (fromMaybe, lastMay)
+import Control.Error (atMay, fromMaybe, lastMay)
 import Control.Exception (IOException, SomeException, catch, try)
 import Control.Monad.IO.Class (MonadIO (..))
 import qualified Data.Map.Strict as Map
@@ -40,7 +43,10 @@ import qualified Ghcid.Daemon as Daemon
 import qualified Loc
 import qualified Util
 
-data ActiveWindow = ActiveCodeViewport | ActiveLiveInterpreter | ActiveInfoWindow
+data ActiveWindow
+    = ActiveCodeViewport
+    | ActiveLiveInterpreter
+    | ActiveInfoWindow
     deriving (Show, Eq, Ord)
 
 data MaxState = NoMaxState | Maximised | Minimised
@@ -77,7 +83,9 @@ data AppState n = AppState
     , selectedFile :: !(Maybe FilePath)
     -- ^ Filepath to the current code viewport contents, if set.
     , selectedLine :: !Int
-    -- ^ Currently selected line number. Resets back to 1.
+    -- ^ Currently selected line number. One indexed. Resets back to 1.
+    , _infoPanelSelectedModule :: !Int
+    -- ^ Currently selected module in the info sidebar, zero indexed.
     , sourceMap :: Map.Map FilePath T.Text
     -- ^ Mapping between source filepaths and their contents.
     , _currentWidgetSizes :: WidgetSizes
@@ -168,17 +176,25 @@ updateSourceMapWithFilepath s filepath
         eContents <- try $ T.readFile adjustedFilepath :: IO (Either IOException T.Text)
         case eContents of
             Left err -> do
-                pure $ writeDebugLog (T.pack $ show err) s
+                pure $
+                    writeDebugLog
+                        ( "failed to update source map with "
+                            <> T.pack filepath
+                            <> ": "
+                            <> T.pack (show err)
+                        )
+                        s
             Right contents -> do
                 let newSourceMap = Map.insert filepath contents s.sourceMap
-                pure s{sourceMap = newSourceMap}
+                let logMsg = "updated source map with " <> T.pack filepath
+                pure (writeDebugLog logMsg s{sourceMap = newSourceMap})
 
 listAvailableSources :: AppState n -> [(T.Text, FilePath)]
 listAvailableSources = Loc.moduleFileMapAssocs . Daemon.moduleFileMap . interpState
 
 -- | Return the potential contents of the current paused file location.
 getSourceContents :: AppState n -> Maybe T.Text
-getSourceContents s = s.selectedFile >>= (s.sourceMap Map.!?)
+getSourceContents s = selectedFile s >>= (sourceMap s Map.!?)
 
 {- | Return the number of lines in the current source viewer.
      Returns Nothing if there's no currently viewed source.
@@ -202,6 +218,13 @@ changeReplWidgetSize amnt s =
         (Util.clamp (1, 80) (getReplHeight s + amnt))
         s
 
+changeSelectedModuleInInfoPanel :: Int -> AppState n -> AppState n
+changeSelectedModuleInInfoPanel amnt s =
+    s{_infoPanelSelectedModule = _infoPanelSelectedModule s + amnt}
+
+getSelectedModuleInInfoPanel :: AppState n -> Int
+getSelectedModuleInInfoPanel = _infoPanelSelectedModule
+
 -- | Return the info box's desired width in character columns.
 getInfoWidth :: AppState n -> Int
 getInfoWidth = _wsInfoWidth . _currentWidgetSizes
@@ -209,6 +232,14 @@ getInfoWidth = _wsInfoWidth . _currentWidgetSizes
 -- | Return the REPL (interactive interpreter)'s box in lines.
 getReplHeight :: AppState n -> Int
 getReplHeight = _wsReplHeight . _currentWidgetSizes
+
+filePathOfInfoSelectedModule :: AppState n -> Maybe FilePath
+filePathOfInfoSelectedModule AppState{interpState, _infoPanelSelectedModule} =
+    fmap snd
+        . flip atMay _infoPanelSelectedModule
+        . Loc.moduleFileMapAssocs
+        . Daemon.moduleFileMap
+        $ interpState
 
 -- | Initialise the state from the config.
 makeInitialState
@@ -253,6 +284,7 @@ makeInitialState appConfig target cwd = do
             , interpLogs = mempty
             , selectedFile
             , selectedLine = 1
+            , _infoPanelSelectedModule = 0
             , sourceMap = mempty
             , _currentWidgetSizes =
                 WidgetSizes
