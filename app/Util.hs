@@ -1,4 +1,4 @@
-module Util where
+module Util (getNumDigits, formatDigits, clamp, showT) where
 
 import Data.Text (Text, pack)
 
