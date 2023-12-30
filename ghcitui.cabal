@@ -49,6 +49,7 @@ executable ghcitui
                         , AppInterpState
                         , AppConfig
                         , Events
+                        , HelpText
     ghc-options:        -rtsopts
                         -threaded
                         -Wall

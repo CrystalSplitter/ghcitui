@@ -7,6 +7,7 @@ data AppName
     | CodeViewportLine Int
     | LiveInterpreter
     | LiveInterpreterViewport
+    | HelpViewport
     | BindingViewport
     | ModulesViewport
     | TraceViewport

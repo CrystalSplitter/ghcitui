@@ -47,6 +47,8 @@ data ActiveWindow
     = ActiveCodeViewport
     | ActiveLiveInterpreter
     | ActiveInfoWindow
+    | ActiveDialogQuit
+    | ActiveDialogHelp
     deriving (Show, Eq, Ord)
 
 data MaxState = NoMaxState | Maximised | Minimised
