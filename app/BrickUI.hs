@@ -10,6 +10,7 @@ import qualified Brick as B
 import qualified Brick.Widgets.Border as B
 import qualified Brick.Widgets.Center as B
 import Brick.Widgets.Core ((<+>), (<=>))
+import qualified Brick.Widgets.Dialog as B
 import qualified Brick.Widgets.Edit as BE
 import Control.Error (headMay)
 import Data.Bifunctor (second)
@@ -33,6 +34,7 @@ import qualified AppState
 import AppTopLevel (AppName (..))
 import qualified Events
 import qualified Ghcid.Daemon as Daemon
+import qualified HelpText
 import qualified Loc
 import qualified NameBinding
 import qualified Util
@@ -42,16 +44,60 @@ type AppS = AppState AppName
 
 appDraw :: AppS -> [B.Widget AppName]
 appDraw s =
-    [ (viewportBox <=> interpreterBox <=> debugBox)
+    [ drawDialogLayer s
+    , drawBaseLayer s
+    ]
+
+dialogMaxWidth :: (Integral a) => a
+dialogMaxWidth = 90
+
+{- | Draw the dialog layer.
+
+If there's no dialog, returns an 'emptyWidget'.
+-}
+drawDialogLayer :: AppS -> B.Widget AppName
+-- Quit Dialog
+drawDialogLayer AppState{activeWindow = ActiveDialogQuit} =
+    B.withAttr (B.attrName "dialog") $ B.renderDialog dialogObj body
+  where
+    dialogObj = B.dialog (Just titleW) Nothing dialogMaxWidth
+    titleW = B.txt "Please don't go. The drones need you. They look up to you."
+    body =
+        B.hCenter
+            (B.padAll 1 (B.txt "Do you want to halt the current program and quit?"))
+            <=> B.hCenter (B.padAll 1 (B.txt "[Enter] -> QUIT" <=> B.txt "[Esc/q] -> Go back"))
+-- Help Dialog
+drawDialogLayer AppState{activeWindow = ActiveDialogHelp} =
+    B.withAttr (B.attrName "dialog") $ B.renderDialog dialogObj body
+  where
+    dialogObj = B.dialog (Just titleW) Nothing dialogMaxWidth
+    titleW = B.txt "Actually reading the manual, huh?"
+    body =
+        ( B.hCenter
+            . B.withVScrollBars B.OnRight
+            . B.viewport HelpViewport B.Vertical
+            $ B.padAll 1 (B.txt HelpText.helpText)
+        )
+            <=> ( B.hCenter
+                    . B.padAll 1
+                    $ B.txt "[Esc/Enter/q] -> Go back"
+                )
+-- No Dialog
+drawDialogLayer _ = B.emptyWidget
+
+drawBaseLayer :: AppS -> B.Widget AppName
+drawBaseLayer s =
+    verticalBoxes
         -- TODO: Make this an expandable viewport, maybe?
         <+> infoBox s
-    ]
   where
+    verticalBoxes = viewportBox <=> interpreterBox <=> debugBox
     sourceLabel =
         markLabel
             (s.activeWindow == ActiveCodeViewport)
             ( "Source: " <> maybe "?" T.pack s.selectedFile
             )
+            "[Esc]"
     interpreterLabel =
         markLabel
             (s.activeWindow == ActiveLiveInterpreter)
@@ -59,6 +105,7 @@ appDraw s =
                 then "Interpreter"
                 else "Interpreter (Scrolling)"
             )
+            "[Ctrl+x]"
 
     -- For seeing the source code.
     viewportBox :: B.Widget AppName
@@ -209,6 +256,10 @@ markLabel False labelTxt focus = B.txt . appendFocusButton $ labelTxt
 markLabel True labelTxt _ =
     B.withAttr (B.attrName "highlight") (B.txt ("#> " <> labelTxt <> " <#"))
 
+-- -------------------------------------------------------------------------------------------------
+-- Code Viewport Drawing
+-- -------------------------------------------------------------------------------------------------
+
 -- | Information used to compute the gutter status of each line.
 data GutterInfo = GutterInfo
     { isStoppedHere :: !Bool
@@ -272,6 +323,46 @@ codeViewportDraw s =
 codeViewportDraw' :: AppS -> T.Text -> B.Widget AppName
 codeViewportDraw' s sourceData = composedTogether
   where
+    composedTogether :: B.Widget AppName
+    composedTogether = B.vBox (createWidget <$> windowedSplitSourceData)
+      where
+        wrapSelectedLine lineno w =
+            if lineno == s.selectedLine
+                then -- Add highlighting, then mark it as visible in the viewport.
+                    B.visible $ B.modifyDefAttr (`V.withStyle` V.bold) w
+                else w
+        createWidget (num, lineTxt) = wrapSelectedLine num (composedTogetherHelper (num, lineTxt))
+
+    -- Select which line widget we want to draw based on both the interpreter
+    -- state and the app state.
+    --
+    -- It's important that the line information is cached, because
+    -- each line is actually pretty expensive to render.
+    composedTogetherHelper :: (Int, T.Text) -> B.Widget AppName
+    composedTogetherHelper (lineno, lineTxt) = lineWidgetCached
+      where
+        sr = maybe Loc.unknownSourceRange Loc.sourceRange (Daemon.pauseLoc (interpState s))
+        mLineno = Loc.singleify sr
+        lineWidget = case mLineno of
+            -- This only makes the stopped line widget appear for the start loc.
+            Just (singleLine, _) | lineno == singleLine -> stoppedLineW lineTxt
+            -- If it's a range, just try to show the range.
+            _
+                | Loc.isLineInside sr lineno -> stoppedRangeW
+            -- If it's not something we stopped in, just show the selection normally.
+            _
+                | lineno == s.selectedLine -> selectedLineW lineTxt
+            -- Default case.
+            _ -> ((\w -> prefixLineDefault' (lineno, w)) . B.txt) lineTxt
+        lineWidgetCached = B.cached (CodeViewportLine lineno) lineWidget
+
+        stoppedRangeW :: B.Widget AppName
+        stoppedRangeW =
+            prefixLineDefault'
+                ( lineno
+                , B.forceAttrAllowStyle (B.attrName "stop-line") (B.txt lineTxt)
+                )
+
     -- Source data split on lines.
     splitSourceData = T.lines sourceData
     -- Source data split on lines, but only the bit we may want to render.
@@ -287,9 +378,6 @@ codeViewportDraw' s sourceData = composedTogether
         startLineno = 1
         withLineNums = zip [startLineno ..]
 
-    breakpoints :: [Int]
-    breakpoints = maybe mempty (\f -> Daemon.getBpInFile f (interpState s)) (selectedFile s)
-
     gutterInfoForLine :: Int -> GutterInfo
     gutterInfoForLine lineno =
         GutterInfo
@@ -303,6 +391,9 @@ codeViewportDraw' s sourceData = composedTogether
             , gutterDigitWidth = Util.getNumDigits $ length splitSourceData
             , isSelected = lineno == s.selectedLine
             }
+      where
+        breakpoints :: [Int]
+        breakpoints = maybe mempty (\f -> Daemon.getBpInFile f (interpState s)) (selectedFile s)
 
     prefixLineDefault' :: (Int, B.Widget n) -> B.Widget n
     prefixLineDefault' (lineno, w) =
@@ -323,48 +414,11 @@ codeViewportDraw' s sourceData = composedTogether
             lineWidget = makeStoppedLineWidget lineTxt (startCol, endCol)
          in prefixLineDefault' (originalLookupLineNo, lineWidget)
 
-    stoppedRangeW :: Int -> T.Text -> B.Widget AppName
-    stoppedRangeW lineno lineTxt =
-        prefixLineDefault' (lineno, B.forceAttrAllowStyle (B.attrName "stop-line") (B.txt lineTxt))
-
     selectedLineW :: T.Text -> B.Widget AppName
     selectedLineW lineTxt =
         let transform = id -- Potentialy useful for highlighting spaces?
             lineWidget = B.txt $ transform lineTxt
          in prefixLineDefault' (s.selectedLine, lineWidget)
-
-    -- Select which line widget we want to draw based on both the interpreter
-    -- state and the app state.
-    --
-    -- It's important that the line information is cached, because
-    -- each line is actually pretty expensive to render.
-    composedTogetherHelper :: (Int, T.Text) -> B.Widget AppName
-    composedTogetherHelper (lineno, lineTxt) = lineWidgetCached
-      where
-        sr = maybe Loc.unknownSourceRange Loc.sourceRange (Daemon.pauseLoc (interpState s))
-        mLineno = Loc.singleify sr
-        lineWidget = case mLineno of
-            -- This only makes the stopped line widget appear for the start loc.
-            Just (singleLine, _) | lineno == singleLine -> stoppedLineW lineTxt
-            -- If it's a range, just try to show the range.
-            _
-                | Loc.isLineInside sr lineno -> stoppedRangeW lineno lineTxt
-            -- If it's not something we stopped in, just show the selection normally.
-            _
-                | lineno == s.selectedLine -> selectedLineW lineTxt
-            -- Default case.
-            _ -> ((\w -> prefixLineDefault' (lineno, w)) . B.txt) lineTxt
-        lineWidgetCached = B.cached (CodeViewportLine lineno) lineWidget
-
-    composedTogether :: B.Widget AppName
-    composedTogether = B.vBox (createWidget <$> windowedSplitSourceData)
-      where
-        wrapSelectedLine lineno w =
-            if lineno == s.selectedLine
-                then -- Add highlighting, then mark it as visible in the viewport.
-                    B.visible $ B.modifyDefAttr (`V.withStyle` V.bold) w
-                else w
-        createWidget (num, lineTxt) = wrapSelectedLine num (composedTogetherHelper (num, lineTxt))
 
 -- | Make the Stopped Line widget (the line where we paused execution)
 makeStoppedLineWidget :: T.Text -> Loc.ColumnRange -> B.Widget AppName
@@ -408,6 +462,7 @@ brickApp =
                     , (B.attrName "underline", B.style V.underline)
                     , (B.attrName "styled", B.fg V.magenta `V.withStyle` V.bold)
                     , (B.attrName "highlight", B.style V.standout)
+                    , (B.attrName "dialog", B.style V.standout)
                     ]
         }
 

@@ -28,9 +28,14 @@ handleEvent :: B.BrickEvent AppName e -> B.EventM AppName (AppState AppName) ()
 handleEvent (B.VtyEvent (V.EvResize _ _)) = B.invalidateCache
 handleEvent ev = do
     appState <- B.get
-    case appState.activeWindow of
-        ActiveCodeViewport -> handleViewportEvent ev
-        ActiveLiveInterpreter -> handleInterpreterEvent ev
+    let handler = case appState.activeWindow of
+            ActiveCodeViewport -> handleViewportEvent
+            ActiveLiveInterpreter -> handleInterpreterEvent
+            ActiveInfoWindow -> handleInfoEvent
+            ActiveDialogQuit -> handleDialogQuit
+            ActiveDialogHelp -> handleDialogHelp
+    handler ev
+
 -- -------------------------------------------------------------------------------------------------
 -- Info Event Handling
 ----------------------------------------------------------------------------------------------------
@@ -212,7 +217,7 @@ replaceCommandBuffer replacement s = Lens.set liveEditor' newEditor s
     newEditor = BE.applyEdit zipp (s ^. liveEditor')
 
 -- -------------------------------------------------------------------------------------------------
--- Viewport Event Handling
+-- Code Viewport Event Handling
 -- -------------------------------------------------------------------------------------------------
 
 -- TODO: Handle mouse events?
@@ -238,11 +243,13 @@ handleViewportEvent (B.VtyEvent (V.EvKey key ms))
     | key == V.KChar 'b' = do
         appState <- B.get
         insertViewportBreakpoint appState
+
     -- j and k are the vim navigation keybindings.
     | key `elem` [V.KDown, V.KChar 'j'] = do
         moveSelectedLineBy 1
     | key `elem` [V.KUp, V.KChar 'k'] = do
         moveSelectedLineBy (-1)
+
     -- '+' and '-' move the middle border.
     | key == V.KChar '+' && null ms = do
         appState <- B.get
@@ -288,6 +295,7 @@ handleViewportEvent (B.VtyEvent (V.EvKey key ms))
         appState <- B.get
         B.put appState{activeWindow = ActiveInfoWindow}
         B.invalidateCacheEntry ModulesViewport
+    | key == V.KChar '?' = B.modify (\state -> state{activeWindow = ActiveDialogHelp})
 handleViewportEvent _ = pure ()
 
 moveSelectedLineBy :: Int -> B.EventM AppName (AppState n) ()
@@ -306,10 +314,7 @@ moveSelectedLineBy movAmnt = do
 -- as we may need to store the dialogue structure in the app state.
 -- For now, just quit cleanly.
 confirmQuit :: B.EventM AppName (AppState AppName) ()
-confirmQuit = do
-    appState <- B.get
-    _ <- liftIO $ Daemon.quit appState.interpState
-    B.halt
+confirmQuit = B.put . (\s -> s{activeWindow = ActiveDialogQuit}) =<< B.get
 
 invalidateCachedLine :: Int -> B.EventM AppName s ()
 invalidateCachedLine lineno = B.invalidateCacheEntry (CodeViewportLine lineno)
@@ -378,6 +383,7 @@ runDaemon2 f appState =
         newState <- updateSourceMap appState{interpState = interp}
         pure (resetSelectedLine newState, x)
 
+-- | Determine whether to show the cursor.
 handleCursorPosition
     :: AppState AppName
     -- ^ State of the app.
@@ -412,3 +418,32 @@ selectedModuleLoc s = eModuleLoc =<< fl
                     <> showT moduleFileMap
                     <> "'"
          in note errMsg res
+
+-- -------------------------------------------------------------------------------------------------
+-- Dialog boxes
+-- -------------------------------------------------------------------------------------------------
+
+handleDialogQuit :: B.BrickEvent AppName e -> B.EventM AppName (AppState AppName) ()
+handleDialogQuit ev = do
+    appState <- B.get
+    case ev of
+        (B.VtyEvent (V.EvKey key _))
+            | key == V.KChar 'q' || key == V.KEsc -> do
+                B.put $ appState{activeWindow = ActiveCodeViewport}
+            | key == V.KEnter -> do
+                _ <- liftIO $ Daemon.quit appState.interpState
+                B.halt
+        _ -> pure ()
+    pure ()
+
+handleDialogHelp :: B.BrickEvent AppName e -> B.EventM AppName (AppState AppName) ()
+handleDialogHelp (B.VtyEvent (V.EvKey key _))
+    | key == V.KChar 'q' || key == V.KEsc || key == V.KEnter = do
+        appState <- B.get
+        B.put $ appState{activeWindow = ActiveCodeViewport}
+    | key == V.KPageDown = B.vScrollPage scroller B.Down
+    | key == V.KPageUp = B.vScrollPage scroller B.Up
+    | otherwise = pure ()
+  where
+    scroller = B.viewportScroll HelpViewport
+handleDialogHelp _ = pure ()
