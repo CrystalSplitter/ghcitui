@@ -193,8 +193,13 @@ updateContext state@InterpState{_ghci} = do
             case ctx of
                 ParseContext.PCError er -> error [i|Failed to update context: #{er}|]
                 ParseContext.PCNoContext -> pure (emptyInterpreterState _ghci)
-                ParseContext.PCContext ParseContext.ParseContextOut{func, filepath, pcSourceRange} ->
-                    pure state{func = Just func, pauseLoc = Just $ Loc.FileLoc filepath pcSourceRange}
+                ParseContext.PCContext
+                    ParseContext.ParseContextOut{func, filepath, pcSourceRange} ->
+                        pure
+                            state
+                                { func = Just func
+                                , pauseLoc = Just $ Loc.FileLoc filepath pcSourceRange
+                                }
 
 -- | Update the current local bindings.
 updateBindings :: InterpState a -> DaemonIO (InterpState a)
@@ -288,7 +293,13 @@ exec cmd state@InterpState{_ghci} = do
     logDebug ("|exec| CMD: " <> cmd) state
     msgs <- liftIO $ Ghcid.exec _ghci (T.unpack cmd)
     logDebug [i|{|exec| OUT:\n#{Util.linesToText msgs}\n}|] state
-    newState <- updateState $ appendExecHist cmd state
+    newState <-
+        updateState
+            ( -- Only append the command to the history if it has something interesting.
+              if T.null cmd
+                then state
+                else appendExecHist cmd state
+            )
     pure (newState, fmap T.pack msgs)
 
 -- | 'exec', but throw out any messages.
