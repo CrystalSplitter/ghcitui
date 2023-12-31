@@ -222,7 +222,10 @@ changeReplWidgetSize amnt s =
 
 changeSelectedModuleInInfoPanel :: Int -> AppState n -> AppState n
 changeSelectedModuleInInfoPanel amnt s =
-    s{_infoPanelSelectedModule = _infoPanelSelectedModule s + amnt}
+    s{_infoPanelSelectedModule = newSelection }
+  where
+    newSelection = (_infoPanelSelectedModule s + amnt) `mod` numModules
+    numModules = length (Loc.moduleFileMapAssocs (Daemon.moduleFileMap (interpState s)))
 
 getSelectedModuleInInfoPanel :: AppState n -> Int
 getSelectedModuleInInfoPanel = _infoPanelSelectedModule
