@@ -79,11 +79,11 @@ library ghcitui-lib
                         , string-interpolate ^>= 0.3.2.1
                         , text ^>= 2.0.2
                         , transformers ^>= 0.6.1.0
-    exposed-modules:    Ghcid.Daemon
-                        , Ghcid.ParseContext
-                        , Loc
-                        , Util
-                        , NameBinding
+    exposed-modules:    Ghcitui.Ghcid.Daemon
+                        , Ghcitui.Ghcid.ParseContext
+                        , Ghcitui.Loc
+                        , Ghcitui.Util
+                        , Ghcitui.NameBinding
     ghc-options:        -Wall
                         -Wcompat
                         -Wincomplete-record-updates

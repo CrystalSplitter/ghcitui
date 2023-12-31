@@ -4,7 +4,7 @@ module UtilSpec where
 
 import Test.Hspec
 
-import Util
+import Ghcitui.Util
 
 spec :: Spec
 spec = do

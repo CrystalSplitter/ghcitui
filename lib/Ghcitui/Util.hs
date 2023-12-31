@@ -1,4 +1,4 @@
-module Util (showT, splitBy, linesToText) where
+module Ghcitui.Util (showT, splitBy, linesToText) where
 
 import Data.Text (Text, breakOn, drop, length, pack)
 import Prelude hiding (drop, length)

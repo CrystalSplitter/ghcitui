@@ -1,7 +1,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module Ghcid.ParseContext
+module Ghcitui.Ghcid.ParseContext
     ( ParseContextOut (..)
     , ParseContextReturn (..)
     , NameBinding (..)
@@ -27,9 +27,9 @@ import Safe (readNote)
 import Text.Regex.TDFA (MatchResult (..), (=~~))
 import qualified Text.Regex.TDFA as Regex
 
-import qualified Loc
-import NameBinding
-import Util
+import qualified Ghcitui.Loc as Loc
+import Ghcitui.NameBinding
+import Ghcitui.Util
 
 ghcidPrompt :: T.Text
 ghcidPrompt = "#~GHCID-START~#"

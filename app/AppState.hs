@@ -38,9 +38,9 @@ import qualified Lens.Micro as Lens
 import AppConfig (AppConfig (..), resolveStartupSplashPath)
 import qualified AppInterpState as AIS
 import AppTopLevel (AppName (..))
-import Ghcid.Daemon (toggleBreakpointLine)
-import qualified Ghcid.Daemon as Daemon
-import qualified Loc
+import Ghcitui.Ghcid.Daemon (toggleBreakpointLine)
+import qualified Ghcitui.Ghcid.Daemon as Daemon
+import qualified Ghcitui.Loc as Loc
 import qualified Util
 
 data ActiveWindow

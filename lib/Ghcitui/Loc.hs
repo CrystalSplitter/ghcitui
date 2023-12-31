@@ -1,4 +1,4 @@
-module Loc
+module Ghcitui.Loc
     ( -- * Code locations within a file
 
     -- Types and functions for handling code within a single file or module.
