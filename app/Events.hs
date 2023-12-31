@@ -19,8 +19,8 @@ import AppState
 import AppTopLevel
     ( AppName (..)
     )
-import qualified Ghcid.Daemon as Daemon
-import qualified Loc
+import qualified Ghcitui.Ghcid.Daemon as Daemon
+import qualified Ghcitui.Loc as Loc
 import Util (showT)
 
 -- | Handle any Brick event and update the state.

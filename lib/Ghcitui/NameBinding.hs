@@ -1,4 +1,4 @@
-module NameBinding (NameBinding (..), BindingValue (..), renderNamesTxt) where
+module Ghcitui.NameBinding (NameBinding (..), BindingValue (..), renderNamesTxt) where
 
 import qualified Data.Text as T
 

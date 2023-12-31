@@ -2,7 +2,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module Ghcid.Daemon
+module Ghcitui.Ghcid.Daemon
     ( -- * The interpreter state
       InterpState
         ( func
@@ -60,11 +60,11 @@ import qualified Data.Text.IO as T
 import qualified Language.Haskell.Ghcid as Ghcid
 import System.IO (stderr)
 
-import qualified Ghcid.ParseContext as ParseContext
-import qualified Loc
-import qualified NameBinding
-import Util (showT)
-import qualified Util
+import qualified Ghcitui.Ghcid.ParseContext as ParseContext
+import qualified Ghcitui.Loc as Loc
+import qualified Ghcitui.NameBinding as NameBinding
+import Ghcitui.Util (showT)
+import qualified Ghcitui.Util as Util
 
 newtype LogLevel = LogLevel Int deriving (Eq, Ord, Show)
 

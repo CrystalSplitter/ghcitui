@@ -2,7 +2,7 @@
 
 module LocSpec where
 
-import Loc
+import Ghcitui.Loc
 import Test.Hspec
 
 spec :: Spec

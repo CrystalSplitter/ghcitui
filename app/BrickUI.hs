@@ -33,10 +33,10 @@ import AppState
 import qualified AppState
 import AppTopLevel (AppName (..))
 import qualified Events
-import qualified Ghcid.Daemon as Daemon
+import qualified Ghcitui.Ghcid.Daemon as Daemon
 import qualified HelpText
-import qualified Loc
-import qualified NameBinding
+import qualified Ghcitui.Loc as Loc
+import qualified Ghcitui.NameBinding as NameBinding
 import qualified Util
 
 -- | Alias for 'AppState AppName' convenience.
