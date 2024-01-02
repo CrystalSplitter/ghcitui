@@ -90,6 +90,10 @@ At any point in time, you can revert back to the Source Viewer panel with the
 ``<Esc>`` key, and you can always quit by hitting ``<Esc>`` in the Source Viewer
 panel.
 
+On top of each panel is a label where the navigation key combination is located.
+For example, the key combination above the Modules panel displays `[M]`.
+Pressing this key combination will move the focus to that panel.
+
 -----------
 Keybindings
 -----------
