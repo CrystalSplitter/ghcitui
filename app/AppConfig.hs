@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module AppConfig where
+module AppConfig (AppConfig(..), defaultConfig, resolveStartupSplashPath) where
 
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
@@ -29,6 +29,8 @@ data AppConfig = AppConfig
     -- ^ Prompt to show for the live interpreter.
     , getDebugConsoleOnStart :: !Bool
     -- ^ Display the debug console on start up.
+    , getDebugLogPath :: !FilePath
+    , getVerbosity :: !Int
     , getStartupSplashPath :: !(Maybe FilePath)
     , getCmd :: !T.Text
     -- ^ Command to run to initialise the interpreter.
@@ -41,6 +43,8 @@ defaultConfig =
     AppConfig
         { getInterpreterPrompt = "ghci> "
         , getDebugConsoleOnStart = False
+        , getDebugLogPath = ""
+        , getVerbosity = 0
         , getStartupSplashPath = Nothing
         , getCmd = "cabal v2-repl --repl-options='-fno-it'"
         , getStartupCommands = mempty

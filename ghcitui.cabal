@@ -10,6 +10,7 @@ description:
     * A source view window, with debug keybindings.
     * Live variable bindings.
     * Live loaded modules.
+    * Visible trace history.
     * An GHCi session in the current context.
 
 bug-reports:        https://github.com/CrystalSplitter/ghcitui
@@ -22,6 +23,8 @@ maintainer:         gamewhizzit@gmail.com
 category: Debug
 extra-source-files: CHANGELOG.md
                     , LICENSE
+                    , MANUAL.rst
+                    , README.md
 
 source-repository head
     type:       git
@@ -50,6 +53,8 @@ executable ghcitui
                         , AppConfig
                         , Events
                         , HelpText
+                        -- Cabal autogen module for package version info.
+                        , Paths_ghcitui
     ghc-options:        -rtsopts
                         -threaded
                         -Wall
@@ -70,7 +75,7 @@ library ghcitui-lib
     hs-source-dirs:     lib
     build-depends:      base >= 4.17 && < 5
                         , array ^>= 0.5.4.0
-                        , containers ^>= 0.6.7
+                        , containers >= 0.6.7 && < 0.8
                         , errors ^>= 2.3.0
                         , ghcid ^>= 0.8.8
                         , regex-base ^>= 0.94.0.2
@@ -81,9 +86,11 @@ library ghcitui-lib
                         , transformers ^>= 0.6.1.0
     exposed-modules:    Ghcitui.Ghcid.Daemon
                         , Ghcitui.Ghcid.ParseContext
+                        , Ghcitui.Ghcid.LogConfig
                         , Ghcitui.Loc
                         , Ghcitui.Util
                         , Ghcitui.NameBinding
+    other-modules:      Ghcitui.Ghcid.StartupConfig
     ghc-options:        -Wall
                         -Wcompat
                         -Wincomplete-record-updates
