@@ -19,6 +19,15 @@ Though there are some notable diverges, some of which are listed below.
 - Try to limit lines to 100 characters, but no _hard_ limit.
 - Let the auto-formatter handle spacing/alignment.
 
+## Profiling
+
+GHCiTUI has some fairly strict runtime requirements, as it needs to have a
+snappy response time to events. Therefore, it's important to profile
+large changes and report on that profiling.
+
+The `profiteur` tool (https://github.com/jaspervdj/profiteur) does an
+excellent job of visualising these profiles.
+
 # Contributor Covenant Code of Conduct
 
 ## Our Pledge
