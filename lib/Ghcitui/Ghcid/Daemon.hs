@@ -19,6 +19,7 @@ module Ghcitui.Ghcid.Daemon
 
       -- * Startup and shutdown
     , startup
+    , StartupConfig(..)
     , quit
 
       -- * Base operations with the daemon
@@ -49,6 +50,7 @@ module Ghcitui.Ghcid.Daemon
     , run
     , DaemonIO
     , DaemonError
+    , LogOutput(..)
     ) where
 
 import Control.Error
@@ -65,11 +67,9 @@ import qualified Ghcitui.Loc as Loc
 import qualified Ghcitui.NameBinding as NameBinding
 import Ghcitui.Util (showT)
 import qualified Ghcitui.Util as Util
-
-newtype LogLevel = LogLevel Int deriving (Eq, Ord, Show)
-
--- | Determines where the daemon logs are written.
-data LogOutput = LogOutputStdOut | LogOutputStdErr | LogOutputFile FilePath
+import Ghcitui.Ghcid.LogConfig (LogLevel(..), LogOutput(..))
+import Ghcitui.Ghcid.StartupConfig (StartupConfig)
+import qualified Ghcitui.Ghcid.StartupConfig as StartupConfig
 
 data InterpState a = InterpState
     { _ghci :: Ghcid.Ghci
@@ -113,8 +113,8 @@ instance Show (InterpState a) where
 {- | Create an empty/starting interpreter state.
 Usually you don't want to call this directly. Instead use 'startup'.
 -}
-emptyInterpreterState :: (Monoid a) => Ghcid.Ghci -> InterpState a
-emptyInterpreterState ghci =
+emptyInterpreterState :: (Monoid a) => Ghcid.Ghci -> StartupConfig -> InterpState a
+emptyInterpreterState ghci startupConfig =
     InterpState
         { _ghci = ghci
         , func = Nothing
@@ -124,11 +124,22 @@ emptyInterpreterState ghci =
         , breakpoints = mempty
         , bindings = Right mempty
         , status = Right mempty
-        , logLevel = LogLevel 3
-        , logOutput = LogOutputFile "/tmp/ghcitui.log"
+        , logLevel = StartupConfig.logLevel startupConfig
+        , logOutput = StartupConfig.logOutput startupConfig
         , execHist = mempty
         , traceHist = mempty
         }
+
+-- | Reset anything context-based in a 'InterpState'.
+contextReset :: (Monoid a) => InterpState a -> InterpState a
+contextReset state = state {
+    func = Nothing
+    , pauseLoc = Nothing
+    , stack = mempty
+    , bindings = Right mempty
+    , status = Right mempty
+    , traceHist = mempty
+}
 
 -- | Append a string to the interpreter's history.
 appendExecHist :: T.Text -> InterpState a -> InterpState a
@@ -145,12 +156,18 @@ startup
     -- ^ Command to run (e.g. "ghci" or "cabal repl")
     -> FilePath
     -- ^ Working directory to run the start up command in.
+    -> StartupConfig
+    -- ^ Where do we put the logging?
     -> DaemonIO (InterpState ())
     -- ^ The newly created interpreter handle.
-startup cmd pwd = do
-    let startOp = Ghcid.startGhci cmd (Just pwd) (\_ _ -> pure ())
+startup cmd wd logOutput = do
+    -- We don't want any highlighting or colours.
+    let realCmd = "env TERM='dumb' " <> cmd
+    let startOp = Ghcid.startGhci realCmd (Just wd) (\_ _ -> pure ())
     (ghci, _) <- liftIO startOp
-    updateState (emptyInterpreterState ghci)
+    let state = emptyInterpreterState ghci logOutput
+    logDebug "|startup| GHCi Daemon initted" state
+    updateState state
 
 -- | Shut down the GHCi Daemon.
 quit :: InterpState a -> IO (InterpState a)
@@ -187,12 +204,12 @@ updateContext state@InterpState{_ghci} = do
         )
         state
     if T.null feedback
-        then pure (emptyInterpreterState _ghci) -- We exited everything.
+        then pure $ contextReset state -- We exited everything.
         else do
             let ctx = ParseContext.parseContext feedback
             case ctx of
                 ParseContext.PCError er -> error [i|Failed to update context: #{er}|]
-                ParseContext.PCNoContext -> pure (emptyInterpreterState _ghci)
+                ParseContext.PCNoContext -> pure $ contextReset state
                 ParseContext.PCContext
                     ParseContext.ParseContextOut{func, filepath, pcSourceRange} ->
                         pure
@@ -292,7 +309,7 @@ exec :: (Monoid a) => T.Text -> InterpState a -> ExceptT DaemonError IO (InterpS
 exec cmd state@InterpState{_ghci} = do
     logDebug ("|exec| CMD: " <> cmd) state
     msgs <- liftIO $ Ghcid.exec _ghci (T.unpack cmd)
-    logDebug [i|{|exec| OUT:\n#{Util.linesToText msgs}\n}|] state
+    logDebug [i||exec| OUT:\n#{Util.linesToText msgs}\n|] state
     newState <-
         updateState
             ( -- Only append the command to the history if it has something interesting.
@@ -367,7 +384,7 @@ setBreakpointLine loc state = do
                         then
                             throwE
                                 (BreakpointError "Cannot set breakpoint at unknown line number")
-                        else pure (mod' <> " " <> line <> " " <> colno)
+                        else pure [i|#{mod'} #{line} #{colno}|]
         pure (":break " <> breakPos)
 
 -- | Delete a breakpoint at a given line.
@@ -447,12 +464,12 @@ getBpInFile fp state =
 logDebug :: (MonadIO m) => T.Text -> InterpState a -> m ()
 logDebug msg state =
     liftIO $ do
-        when (logLevel state >= LogLevel 3) $
+        when (logLevel state >= LogLevel 2) $
             logHelper output "[DEBUG]: " msg
   where
     output = logOutput state
 
--- | Log a message at the Error level.
+{- Log a message at the Error level.
 logError :: (MonadIO m) => T.Text -> InterpState a -> m ()
 logError msg state =
     liftIO $ do
@@ -460,6 +477,7 @@ logError msg state =
             logHelper output "[ERROR]: " msg
   where
     output = logOutput state
+-}
 
 logHelper
     :: (MonadIO m)
