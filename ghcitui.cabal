@@ -70,6 +70,7 @@ executable ghcitui
                         RecordWildCards
                         TupleSections
                         MonoLocalBinds
+                        NamedFieldPuns
 
 library ghcitui-lib
     hs-source-dirs:     lib
@@ -103,6 +104,8 @@ library ghcitui-lib
                         RecordWildCards
                         TupleSections
                         MonoLocalBinds
+                        NamedFieldPuns
+
 
 test-suite spec
     hs-source-dirs:     test
