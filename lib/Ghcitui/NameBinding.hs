@@ -17,7 +17,7 @@ data NameBinding t = NameBinding
     deriving (Eq, Show)
 
 -- | Display the name bindings together into a group of Texts.
-renderNamesTxt :: (Functor f, Foldable f) => f (NameBinding T.Text) -> f T.Text
+renderNamesTxt :: (Functor f) => f (NameBinding T.Text) -> f T.Text
 renderNamesTxt ns = onEach <$> ns
   where
     valueRender Uneval = "_"
