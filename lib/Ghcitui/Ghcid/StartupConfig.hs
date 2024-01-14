@@ -1,4 +1,4 @@
-module Ghcitui.Ghcid.StartupConfig where
+module Ghcitui.Ghcid.StartupConfig (StartupConfig(..)) where
 
 import Ghcitui.Ghcid.LogConfig (LogLevel, LogOutput)
 

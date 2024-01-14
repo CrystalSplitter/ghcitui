@@ -17,9 +17,8 @@ bug-reports:        https://github.com/CrystalSplitter/ghcitui
 license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Jordan 'CrystalSplitter' R AW
-maintainer:         gamewhizzit@gmail.com
--- A copyright notice.
--- copyright:
+maintainer:         crystal@crystalwobsite.gay
+copyright:          Jordan R AW
 category: Debug
 extra-source-files: CHANGELOG.md
                     , LICENSE
@@ -34,16 +33,18 @@ executable ghcitui
     main-is:            Main.hs
     build-depends:      base >= 4.17 && < 5
                         , brick
-                        , containers
-                        , errors
+                        , containers >= 0.6.7 && < 0.8
+                        , errors ^>= 2.3.0
                         , ghcitui-lib
                         , microlens ^>= 0.4.13.1
+                        , microlens-th ^>= 0.4.3.14
                         , optparse-applicative ^>= 0.18.1.0
                         , safe ^>= 0.3.19
-                        , text
+                        , text ^>= 2.0.2
                         , text-zipper ^>= 0.13
                         , vty ^>= 5.38
                         , word-wrap ^>= 0.5
+                        , vector ^>= 0.13.1.0
     hs-source-dirs:     app
     other-modules:      BrickUI
                         , AppState
@@ -51,10 +52,12 @@ executable ghcitui
                         , Util
                         , AppInterpState
                         , AppConfig
+                        , DrawSourceViewer
                         , Events
                         , HelpText
                         -- Cabal autogen module for package version info.
                         , Paths_ghcitui
+                        , SourceWindow
     ghc-options:        -rtsopts
                         -threaded
                         -Wall

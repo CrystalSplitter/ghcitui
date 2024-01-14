@@ -1,10 +1,10 @@
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE BlockArguments #-}
 
 module Events (handleEvent, handleCursorPosition) where
 
 import qualified Brick.Main as B
 import qualified Brick.Types as B
-import qualified Brick.Util as B
 import qualified Brick.Widgets.Edit as BE
 import Control.Error (atDef, fromMaybe, lastDef, note)
 import Control.Monad.IO.Class (MonadIO (..))
@@ -21,6 +21,7 @@ import AppTopLevel
     )
 import qualified Ghcitui.Ghcid.Daemon as Daemon
 import qualified Ghcitui.Loc as Loc
+import qualified SourceWindow
 import Util (showT)
 
 -- | Handle any Brick event and update the state.
@@ -28,8 +29,10 @@ handleEvent :: B.BrickEvent AppName e -> B.EventM AppName (AppState AppName) ()
 handleEvent (B.VtyEvent (V.EvResize _ _)) = B.invalidateCache
 handleEvent ev = do
     appState <- B.get
-    let handler = case appState.activeWindow of
-            ActiveCodeViewport -> handleViewportEvent
+    updatedSourceWindow <- SourceWindow.updateSrcWindowEnd (appState ^. AppState.sourceWindow)
+    let appStateUpdated = Lens.set AppState.sourceWindow updatedSourceWindow appState
+    let handler = case appStateUpdated.activeWindow of
+            ActiveCodeViewport -> handleSrcWindowEvent
             ActiveLiveInterpreter -> handleInterpreterEvent
             ActiveInfoWindow -> handleInfoEvent
             ActiveDialogQuit -> handleDialogQuit
@@ -53,14 +56,7 @@ handleInfoEvent ev = do
                 let mayFp = AppState.filePathOfInfoSelectedModule appState
                 case mayFp of
                     Just _ -> do
-                        updatedState <-
-                            liftIO
-                                ( AppState.updateSourceMap
-                                    appState
-                                        { selectedFile = mayFp
-                                        , selectedLine = 1
-                                        }
-                                )
+                        updatedState <- liftIO $ AppState.setSelectedFile mayFp appState
                         B.put updatedState
                         invalidateLineCache
                     Nothing -> pure ()
@@ -97,7 +93,7 @@ handleInterpreterEvent ev = do
             let newEditor =
                     BE.applyEdit
                         (T.killToEOF . T.gotoBOF)
-                        (appState ^. liveEditor')
+                        (appState ^. liveEditor)
             -- TODO: Should be configurable?
             let interpreterLogLimit = 1000
             let formattedWithPrompt = appState.appConfig.getInterpreterPrompt <> cmd
@@ -110,7 +106,7 @@ handleInterpreterEvent ev = do
                             { interpLogs =
                                 take interpreterLogLimit combinedLogs
                             }
-            let appStateFinalIO = updateSourceMap (Lens.set liveEditor' newEditor newAppState2)
+            let appStateFinalIO = updateSourceMap (Lens.set liveEditor newEditor newAppState2)
             B.put =<< liftIO appStateFinalIO
             -- Invalidate the entire render state of the application
             -- because we don't know what's actually changed here now.
@@ -126,9 +122,12 @@ handleInterpreterEvent ev = do
         B.VtyEvent (V.EvKey (V.KChar 'x') [V.MCtrl]) ->
             -- Toggle out of the interpreter.
             leaveInterpreter
-        B.VtyEvent (V.EvKey V.KEsc _) ->
-            -- Also toggle out of the interpreter.
-            leaveInterpreter
+        B.VtyEvent (V.EvKey V.KEsc _) -> do
+            if not $ appState ^. appInterpState . AIS.viewLock
+                then -- Exit scroll mode first.
+                    B.put (Lens.set (appInterpState . AIS.viewLock) True appState)
+                else -- Also toggle out of the interpreter.
+                    leaveInterpreter
         B.VtyEvent (V.EvKey V.KUp _) -> do
             let maybeStoreBuffer s =
                     if not (AIS.isScanningHist (getAis s))
@@ -182,9 +181,9 @@ handleInterpreterEvent ev = do
             -- When typing, bring us back down to the terminal.
             B.put (Lens.set (appInterpState . AIS.viewLock) True appState)
             -- Actually handle text input commands.
-            B.zoom liveEditor' $ BE.handleEditorEvent ev'
+            B.zoom liveEditor $ BE.handleEditorEvent ev'
   where
-    editorContents appState = BE.getEditContents $ appState ^. liveEditor'
+    editorContents appState = BE.getEditContents $ appState ^. liveEditor
     storeCommandBuffer appState =
         Lens.set (appInterpState . AIS.commandBuffer) (editorContents appState) appState
     getAis s = s ^. appInterpState
@@ -210,19 +209,19 @@ replaceCommandBuffer
     -- ^ State to modify.
     -> AppState n
     -- ^ New state.
-replaceCommandBuffer replacement s = Lens.set liveEditor' newEditor s
+replaceCommandBuffer replacement s = Lens.set liveEditor newEditor s
   where
     zipp :: T.TextZipper T.Text -> T.TextZipper T.Text
     zipp = T.killToEOF . T.insertMany replacement . T.gotoBOF
-    newEditor = BE.applyEdit zipp (s ^. liveEditor')
+    newEditor = BE.applyEdit zipp (s ^. liveEditor)
 
 -- -------------------------------------------------------------------------------------------------
 -- Code Viewport Event Handling
 -- -------------------------------------------------------------------------------------------------
 
 -- TODO: Handle mouse events?
-handleViewportEvent :: B.BrickEvent AppName e -> B.EventM AppName (AppState AppName) ()
-handleViewportEvent (B.VtyEvent (V.EvKey key ms))
+handleSrcWindowEvent :: B.BrickEvent AppName e -> B.EventM AppName (AppState AppName) ()
+handleSrcWindowEvent (B.VtyEvent (V.EvKey key ms))
     | key `elem` [V.KChar 'q', V.KEsc] = do
         confirmQuit
     | key == V.KChar 's' = do
@@ -242,13 +241,18 @@ handleViewportEvent (B.VtyEvent (V.EvKey key ms))
         B.put newState
     | key == V.KChar 'b' = do
         appState <- B.get
-        insertViewportBreakpoint appState
+        insertBreakpoint appState
 
     -- j and k are the vim navigation keybindings.
     | key `elem` [V.KDown, V.KChar 'j'] = do
-        moveSelectedLineBy 1
+        moveSelectedLineby 1
     | key `elem` [V.KUp, V.KChar 'k'] = do
-        moveSelectedLineBy (-1)
+        moveSelectedLineby (-1)
+
+    | key == V.KPageDown = do
+        scrollPage SourceWindow.Down
+    | key == V.KPageUp = do
+        scrollPage SourceWindow.Up
 
     -- '+' and '-' move the middle border.
     | key == V.KChar '+' && null ms = do
@@ -259,36 +263,6 @@ handleViewportEvent (B.VtyEvent (V.EvKey key ms))
         appState <- B.get
         B.put (AppState.changeInfoWidgetSize 1 appState)
         B.invalidateCacheEntry ModulesViewport
-    | key == V.KPageDown = do
-        appState <- B.get
-        mViewport <- B.lookupViewport CodeViewport
-        let oldSelectedLine = selectedLine appState
-        let getViewportBot viewport = B._vpTop viewport + snd (B._vpSize viewport)
-        let newSelectedLine = case mViewport of
-                -- Need the + 1 due to one-indexing.
-                Just viewport ->
-                    let lineCount = fromMaybe 1 (getSourceLineCount appState)
-                     in B.clamp 1 lineCount (getViewportBot viewport + 1)
-                Nothing -> oldSelectedLine
-        invalidateCachedLine oldSelectedLine
-        invalidateCachedLine newSelectedLine
-        B.put appState{selectedLine = newSelectedLine}
-        let scroller = B.viewportScroll CodeViewport
-        B.vScrollPage scroller B.Down
-    | key == V.KPageUp = do
-        appState <- B.get
-        mViewport <- B.lookupViewport CodeViewport
-        let oldSelectedLine = selectedLine appState
-        let newSelectedLine = case mViewport of
-                Just viewport ->
-                    let lineCount = fromMaybe 1 (getSourceLineCount appState)
-                     in B.clamp 1 lineCount (B._vpTop viewport)
-                Nothing -> oldSelectedLine
-        invalidateCachedLine oldSelectedLine
-        invalidateCachedLine newSelectedLine
-        B.put appState{selectedLine = newSelectedLine}
-        let scroller = B.viewportScroll CodeViewport
-        B.vScrollPage scroller B.Up
     | key == V.KChar 'x' && ms == [V.MCtrl] =
         B.put . toggleActiveLineInterpreter =<< B.get
     | key == V.KChar 'M' = do
@@ -296,39 +270,45 @@ handleViewportEvent (B.VtyEvent (V.EvKey key ms))
         B.put appState{activeWindow = ActiveInfoWindow}
         B.invalidateCacheEntry ModulesViewport
     | key == V.KChar '?' = B.modify (\state -> state{activeWindow = ActiveDialogHelp})
-handleViewportEvent _ = pure ()
+handleSrcWindowEvent _ = pure ()
 
-moveSelectedLineBy :: Int -> B.EventM AppName (AppState n) ()
-moveSelectedLineBy movAmnt = do
+moveSelectedLineby :: Int -> B.EventM AppName (AppState AppName) ()
+moveSelectedLineby movAmnt = do
     appState <- B.get
-    let lineCount = fromMaybe 1 (getSourceLineCount appState)
-    let oldLineno = selectedLine appState
-    let newLineno = B.clamp 1 lineCount (oldLineno + movAmnt)
-    let newState = appState{selectedLine = newLineno}
+    let oldLineno = AppState.selectedLine appState
+    movedAppState <- do
+        sw <- SourceWindow.srcWindowMoveSelectionBy movAmnt (appState ^. AppState.sourceWindow)
+        pure $ Lens.set AppState.sourceWindow sw appState
+    let newLineno = AppState.selectedLine movedAppState
     -- These two lines need to be re-rendered.
     invalidateCachedLine oldLineno
     invalidateCachedLine newLineno
-    B.put newState
+    B.put $ writeDebugLog ("Selected line is: " <> Util.showT newLineno) movedAppState
 
--- TODO: Actually confirm using a dialogue. This is a little tricky,
--- as we may need to store the dialogue structure in the app state.
--- For now, just quit cleanly.
+scrollPage :: SourceWindow.ScrollDir -> B.EventM AppName (AppState AppName) ()
+scrollPage dir = do
+    appState <- B.get
+    B.put
+        . (\srcW -> Lens.set AppState.sourceWindow srcW appState)
+        =<< SourceWindow.srcWindowScrollPage dir (appState ^. AppState.sourceWindow)
+
+-- | Open up the quit dialog. See 'quit' for the actual quitting.
 confirmQuit :: B.EventM AppName (AppState AppName) ()
 confirmQuit = B.put . (\s -> s{activeWindow = ActiveDialogQuit}) =<< B.get
 
 invalidateCachedLine :: Int -> B.EventM AppName s ()
-invalidateCachedLine lineno = B.invalidateCacheEntry (CodeViewportLine lineno)
+invalidateCachedLine lineno = B.invalidateCacheEntry (SourceWindowLine lineno)
 
-insertViewportBreakpoint :: AppState AppName -> B.EventM AppName (AppState AppName) ()
-insertViewportBreakpoint appState =
+insertBreakpoint :: AppState AppName -> B.EventM AppName (AppState AppName) ()
+insertBreakpoint appState =
     case selectedModuleLoc appState of
         Left err -> do
-            let selectedFileMsg = fromMaybe "<unknown>" appState.selectedFile
+            let selectedFileMsg = fromMaybe "<unknown>" (selectedFile appState)
             let errMsg =
                     "Cannot find module of line: "
                         <> selectedFileMsg
                         <> ":"
-                        <> show appState.selectedLine
+                        <> show (selectedLine appState)
                         <> ": "
                         <> T.unpack err
             liftIO $ fail errMsg
@@ -355,33 +335,31 @@ insertViewportBreakpoint appState =
 invalidateLineCache :: (Ord n) => B.EventM n (state n) ()
 invalidateLineCache = B.invalidateCache
 
+-- | Run a DaemonIO function on a given interpreter state, within an EventM monad.
 runDaemon
-    :: (MonadIO m)
+    :: (Ord n) 
     => (Daemon.InterpState () -> Daemon.DaemonIO (Daemon.InterpState ()))
     -> AppState n
-    -> m (AppState n)
-runDaemon f appState =
-    liftIO $ do
-        interp <-
-            (Daemon.run . f) appState.interpState >>= \case
-                Right out -> pure out
-                Left er -> error $ show er
-        newState <- updateSourceMap appState{interpState = interp}
-        pure (resetSelectedLine newState)
+    -> B.EventM n m (AppState n)
+runDaemon f appState = do
+    interp <- liftIO $ do
+        (Daemon.run . f) appState.interpState >>= \case
+            Right out -> pure out
+            Left er -> error $ show er
+    selectPausedLine appState{interpState = interp}
 
+-- | Alternative to 'runDaemon' which returns a value along with the state.
 runDaemon2
-    :: (MonadIO m)
+    :: (Ord n)
     => (Daemon.InterpState () -> Daemon.DaemonIO (Daemon.InterpState (), a))
     -> AppState n
-    -> m (AppState n, a)
-runDaemon2 f appState =
-    liftIO $ do
-        (interp, x) <-
-            (Daemon.run . f) appState.interpState >>= \case
+    -> B.EventM n m (AppState n, a)
+runDaemon2 f appState = do
+    (interp, x) <- liftIO $ (Daemon.run . f) appState.interpState >>= \case
                 Right out -> pure out
                 Left er -> error $ show er
-        newState <- updateSourceMap appState{interpState = interp}
-        pure (resetSelectedLine newState, x)
+    newState <- selectPausedLine appState{interpState = interp}
+    pure (newState, x)
 
 -- | Determine whether to show the cursor.
 handleCursorPosition
@@ -405,7 +383,7 @@ selectedModuleLoc :: AppState n -> Either T.Text Loc.ModuleLoc
 selectedModuleLoc s = eModuleLoc =<< fl
   where
     sourceRange = Loc.srFromLineNo (selectedLine s)
-    fl = case s.selectedFile of
+    fl = case selectedFile s of
         Nothing -> Left "No selected file to get module of"
         Just x -> Right (Loc.FileLoc x sourceRange)
     eModuleLoc x =
@@ -430,9 +408,7 @@ handleDialogQuit ev = do
         (B.VtyEvent (V.EvKey key _))
             | key == V.KChar 'q' || key == V.KEsc -> do
                 B.put $ appState{activeWindow = ActiveCodeViewport}
-            | key == V.KEnter -> do
-                _ <- liftIO $ Daemon.quit appState.interpState
-                B.halt
+            | key == V.KEnter -> quit appState
         _ -> pure ()
     pure ()
 
@@ -447,3 +423,7 @@ handleDialogHelp (B.VtyEvent (V.EvKey key _))
   where
     scroller = B.viewportScroll HelpViewport
 handleDialogHelp _ = pure ()
+
+-- | Stop the TUI.
+quit :: AppState n -> B.EventM n s ()
+quit appState = liftIO (Daemon.quit appState.interpState) >> B.halt

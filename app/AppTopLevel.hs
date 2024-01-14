@@ -4,11 +4,13 @@ module AppTopLevel (AppName (..)) where
 data AppName
     = GHCiTUI
     | CodeViewport
-    | CodeViewportLine Int
+    | SourceWindowLine Int
+    | DebugPanel
     | LiveInterpreter
     | LiveInterpreterViewport
     | HelpViewport
     | BindingViewport
     | ModulesViewport
     | TraceViewport
+    | SourceList
     deriving (Eq, Show, Ord)
