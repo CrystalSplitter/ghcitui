@@ -34,7 +34,6 @@ import qualified Ghcitui.Ghcid.Daemon as Daemon
 import qualified Ghcitui.Loc as Loc
 import qualified Ghcitui.NameBinding as NameBinding
 import qualified HelpText
-
 import qualified DrawSourceViewer
 
 -- | Alias for 'AppState AppName' convenience.
