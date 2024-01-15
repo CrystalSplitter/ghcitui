@@ -25,6 +25,9 @@ module SourceWindow
     , srcNameL
     , srcSelectedLineL
     , srcWindowStartL
+
+    -- * Misc
+    , srcWindowLength
     ) where
 
 import qualified Brick as B
@@ -112,7 +115,7 @@ scrollTo pos srcW@SourceWindow{srcWindowEnd = Just windowEnd} =
         | otherwise = newClampedSelectedLine
     renderHeight = windowEnd - srcWindowStart srcW
     isScrollingPastStart = pos < 1
-    isScrollingPastEnd = pos > srcWindowLength srcW
+    isScrollingPastEnd = pos >= srcWindowLength srcW -- Using >= because of a hack.
     newClampedSelectedLine =
         Util.clamp
             (clampedPos, clampedPos + renderHeight)

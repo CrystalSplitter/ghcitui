@@ -15,7 +15,7 @@ import Control.Error (headMay)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Graphics.Vty as V
-import Lens.Micro ((^.))
+import Lens.Micro ((&), (^.))
 import qualified Text.Wrap as Wrap
 
 import qualified AppConfig
@@ -29,12 +29,14 @@ import AppState
     )
 import qualified AppState
 import AppTopLevel (AppName (..))
+import qualified DrawSourceViewer
 import qualified Events
 import qualified Ghcitui.Ghcid.Daemon as Daemon
 import qualified Ghcitui.Loc as Loc
 import qualified Ghcitui.NameBinding as NameBinding
 import qualified HelpText
-import qualified DrawSourceViewer
+import qualified SourceWindow
+import qualified Util
 
 -- | Alias for 'AppState AppName' convenience.
 type AppS = AppState AppName
@@ -104,17 +106,37 @@ drawBaseLayer s =
     -- For seeing the source code.
     sourceWindowBox :: B.Widget AppName
     sourceWindowBox =
-            B.borderWithLabel sourceLabel
+        B.borderWithLabel sourceLabel
             . appendLastCommand
             . B.padRight B.Max
             . B.padBottom B.Max
             $ DrawSourceViewer.drawSourceViewer s
       where
         appendLastCommand w =
-            case headMay s.interpState.execHist of
-                Just h -> B.padBottom B.Max (w <=> B.hBorder <=> B.txt h)
-                _ -> w
-
+            B.padBottom B.Max (w <=> B.hBorder <=> (lastCmdWidget <+> lineNumRatioWidget))
+          where
+            selectedLine = AppState.selectedLine s
+            totalLines = s ^. AppState.sourceWindow & SourceWindow.srcWindowLength
+            percentageNum =
+                if totalLines > 0
+                    then (selectedLine * 100) `div` totalLines
+                    else 0
+            lineNumRatioWidget =
+                B.txt
+                    ( Util.showT selectedLine
+                        <> "/"
+                        <> Util.showT totalLines
+                        <> "L ("
+                        <> Util.showT percentageNum
+                        <> "%)"
+                    )
+            lastCmdWidget =
+                B.padRight
+                    B.Max
+                    ( case headMay s.interpState.execHist of
+                        Just h -> B.txt h
+                        _ -> B.txt " "
+                    )
 
     -- For the REPL.
     interpreterBox :: B.Widget AppName
@@ -151,7 +173,7 @@ drawBaseLayer s =
             then
                 let logDisplay =
                         if null s.debugConsoleLogs then [" "] else s.debugConsoleLogs
-                    applyVisTo (x:xs) = B.visible x : xs
+                    applyVisTo (x : xs) = B.visible x : xs
                     applyVisTo [] = []
                  in B.borderWithLabel (B.txt "Debug")
                         . B.vLimit 10
@@ -261,7 +283,6 @@ markLabel False labelTxt focus = B.txt . appendFocusButton $ labelTxt
     appendFocusButton t = if focus == mempty then t else t <> " " <> focus
 markLabel True labelTxt _ =
     B.withAttr (B.attrName "highlight") (B.txt ("#> " <> labelTxt <> " <#"))
-
 
 -- -------------------------------------------------------------------------------------------------
 -- Brick Main
