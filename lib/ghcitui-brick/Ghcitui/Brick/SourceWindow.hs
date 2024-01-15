@@ -1,8 +1,9 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module SourceWindow
+module Ghcitui.Brick.SourceWindow
     ( SourceWindow (srcElements)
 
       -- * Creation
@@ -26,7 +27,7 @@ module SourceWindow
     , srcSelectedLineL
     , srcWindowStartL
 
-    -- * Misc
+      -- * Misc
     , srcWindowLength
     ) where
 
@@ -38,14 +39,20 @@ import Lens.Micro ((^.))
 import qualified Lens.Micro as Lens
 import Lens.Micro.TH (makeLensesFor)
 
-import qualified Util
+import qualified Ghcitui.Util as Util
 
-data SourceWindow n e = SourceWindow
-    { srcElements :: !(Vec.Vector e)
+-- | Hold data regarding a code source viewing window.
+data SourceWindow name elem = SourceWindow
+    { srcElements :: !(Vec.Vector elem)
+    -- ^ The actual entries for each source window.
     , srcWindowStart :: !Int
+    -- ^ The starting position of the window, as a line number (1-indexed).
+    -- No lines before this line number is rendered.
     , srcWindowEnd :: !(Maybe Int)
-    , srcName :: !n
+    , srcName :: !name
+    -- ^ The name of the window.
     , srcSelectedLine :: !(Maybe Int)
+    -- ^ The currently selected line in the window.
     }
     deriving (Show)
 
@@ -58,11 +65,15 @@ makeLensesFor
     ]
     ''SourceWindow
 
+-- | Render a 'SourceWindow' into a Brick 'B.Widget'.
 renderSourceWindow
     :: (Ord n)
     => (Int -> Bool -> e -> B.Widget n)
+    -- ^ Render function.
     -> SourceWindow n e
+    -- ^ 'SourceWindow' to render.
     -> B.Widget n
+    -- ^ The newly created widget.
 renderSourceWindow func srcW = B.reportExtent (srcName srcW) (B.Widget B.Greedy B.Greedy renderM)
   where
     renderM = do
@@ -85,6 +96,10 @@ renderSourceWindow func srcW = B.reportExtent (srcName srcW) (B.Widget B.Greedy 
     remainingElements = srcWindowLength srcW - startZeroIdx
     elems = srcElements srcW
 
+{- | Return the length of the full contents of the source code stored in the window.
+
+     Note, does NOT return the current length/height/size of the rendered widget.
+-}
 srcWindowLength :: SourceWindow n e -> Int
 srcWindowLength = Vec.length . srcElements
 
@@ -122,6 +137,7 @@ scrollTo pos srcW@SourceWindow{srcWindowEnd = Just windowEnd} =
             <$> srcSelectedLine srcW
 scrollTo _ srcW = srcW
 
+-- | Direction to scroll by.
 data ScrollDir = Up | Down deriving (Eq, Show)
 
 -- | Scroll by a full page in a direction.
@@ -139,7 +155,14 @@ srcWindowScrollPage' dir srcW =
   where
     windowEnd = fromMaybe 1 $ srcWindowEnd srcW
 
-setSelectionTo :: (Ord n) => Int -> SourceWindow n e -> B.EventM n m (SourceWindow n e)
+-- | Set the selection to a given position, and scroll the window accordingly.
+setSelectionTo
+    :: (Ord n)
+    => Int
+    -- ^ Line number to set the selection to (1-indexed)
+    -> SourceWindow n e
+    -- ^ Source window to update.
+    -> B.EventM n m (SourceWindow n e)
 setSelectionTo pos srcW@SourceWindow{srcSelectedLine = Just sl, srcWindowEnd = Just end} =
     if pos < srcWindowStart srcW || pos > end
         then srcWindowMoveSelectionBy delta srcW
@@ -150,7 +173,13 @@ setSelectionTo pos srcW@SourceWindow{srcSelectedLine = Just sl, srcWindowEnd = J
 setSelectionTo _ srcW = pure srcW
 
 -- | Move the selected line by a given amount.
-srcWindowMoveSelectionBy :: (Ord n) => Int -> SourceWindow n e -> B.EventM n m (SourceWindow n e)
+srcWindowMoveSelectionBy
+    :: (Ord n)
+    => Int
+    -- ^ Delta to move the selected line.
+    -> SourceWindow n e
+    -- ^ Source window to update.
+    -> B.EventM n m (SourceWindow n e)
 srcWindowMoveSelectionBy amnt sw = do
     srcW' <- updateSrcWindowEnd sw
     case srcWindowEnd srcW' of
@@ -185,9 +214,9 @@ mkSourcWindow
     -- ^ Name for the source window.
     -> T.Text
     -- ^ Text contents of the source window (to be split up).
-    -> SourceWindow.SourceWindow n T.Text
+    -> SourceWindow n T.Text
 mkSourcWindow name text =
-    SourceWindow.SourceWindow
+    SourceWindow
         { srcElements = lineVec
         , srcWindowStart = 1
         , srcSelectedLine = Just 1

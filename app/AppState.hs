@@ -44,12 +44,13 @@ import qualified Lens.Micro as Lens
 import AppConfig (AppConfig (..), resolveStartupSplashPath)
 import qualified AppInterpState as AIS
 import AppTopLevel (AppName (..))
-import Ghcitui.Ghcid.Daemon (toggleBreakpointLine) -- Re-export
+
+import qualified Ghcitui.Brick.SourceWindow as SourceWindow
+import Ghcitui.Ghcid.Daemon (toggleBreakpointLine)
 import qualified Ghcitui.Ghcid.Daemon as Daemon
 import qualified Ghcitui.Ghcid.LogConfig as LogConfig
 import qualified Ghcitui.Loc as Loc
-import qualified SourceWindow
-import qualified Util
+import qualified Ghcitui.Util as Util
 
 data ActiveWindow
     = ActiveCodeViewport
@@ -59,16 +60,10 @@ data ActiveWindow
     | ActiveDialogHelp
     deriving (Show, Eq, Ord)
 
-data MaxState = NoMaxState
-
--- \| Maximised | Minimised
-
 -- | Size information of the current GHCiTUI main boxes.
 data WidgetSizes = WidgetSizes
     { _wsInfoWidth :: !Int
-    , _wsInfoMaxState :: !MaxState
     , _wsReplHeight :: !Int
-    , _wsReplMaxState :: !MaxState
     }
 
 {- | Application state wrapper.
@@ -152,8 +147,7 @@ selectedFile = _selectedFile
 setSelectedFile :: (MonadIO m) => Maybe FilePath -> AppState n -> m (AppState n)
 setSelectedFile mayFP appState =
     if mayFP == _selectedFile appState
-        then
-            -- If we're selecting the same file again, do nothing.
+        then -- If we're selecting the same file again, do nothing.
             pure appState
         else do
             -- Update the source map with the new file, and replace the window contents.
@@ -340,9 +334,7 @@ makeInitialState appConfig target cwd = do
             , _currentWidgetSizes =
                 WidgetSizes
                     { _wsInfoWidth = 30
-                    , _wsInfoMaxState = NoMaxState
                     , _wsReplHeight = 11 -- 10 plus 1 for the entry line.
-                    , _wsReplMaxState = NoMaxState
                     }
             , splashContents
             , _sourceWindow = SourceWindow.mkSourcWindow SourceList ""

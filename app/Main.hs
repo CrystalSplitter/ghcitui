@@ -3,8 +3,8 @@
 
 module Main where
 
-import qualified Paths_ghcitui as CabalPkg
 import qualified Data.Version
+import qualified Paths_ghcitui as CabalPkg
 
 import Control.Applicative (many)
 import qualified Data.Text as T
@@ -42,7 +42,7 @@ parseOpts = do
             ( Opt.long "daemon-log"
                 <> Opt.help daemonLogHelp
                 <> Opt.metavar "LOGFILE"
-                <> Opt.value "/tmp/ghcitui.log"
+                <> Opt.value "stderr"
             )
     cmd <-
         Opt.strOption
@@ -71,7 +71,7 @@ parseOpts = do
         "File path for debugging daemon logs."
             <> " Used with -v."
             <> " Setting this to 'stdout' or 'stderr' sends logs to each, respectively."
-            <> " Defaults to /tmp/ghcitui.log."
+            <> " Defaults to 'stderr'"
 
 -- | The cabal package version.
 programVersion :: String

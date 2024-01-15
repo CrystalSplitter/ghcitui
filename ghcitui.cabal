@@ -4,14 +4,19 @@ version:            0.1.0.0
 synopsis:           A Terminal User Interface (TUI) for GHCi
 
 description:
-  A visual interface for GHCi debug mode inside the terminal.
-
+  A terminal user interface for GHCi debug mode.
+  .
   Features:
-    * A source view window, with debug keybindings.
-    * Live variable bindings.
-    * Live loaded modules.
-    * Visible trace history.
-    * An GHCi session in the current context.
+  .
+  * A source view window, with debug keybindings.
+  .
+  * Live variable bindings.
+  .
+  * Live loaded modules.
+  .
+  * Visible trace history.
+  .
+  * An GHCi session in the current context.
 
 bug-reports:        https://github.com/CrystalSplitter/ghcitui
 license:            BSD-3-Clause
@@ -19,7 +24,7 @@ license-file:       LICENSE
 author:             Jordan 'CrystalSplitter' R AW
 maintainer:         crystal@crystalwobsite.gay
 copyright:          Jordan R AW
-category: Debug
+category:           Debug
 extra-source-files: CHANGELOG.md
                     , LICENSE
                     , MANUAL.rst
@@ -35,21 +40,21 @@ executable ghcitui
                         , brick
                         , containers >= 0.6.7 && < 0.8
                         , errors ^>= 2.3.0
-                        , ghcitui-lib
+                        , ghcitui-core
+                        , ghcitui-brick
                         , microlens ^>= 0.4.13.1
                         , microlens-th ^>= 0.4.3.14
                         , optparse-applicative ^>= 0.18.1.0
                         , safe ^>= 0.3.19
                         , text ^>= 2.0.2
                         , text-zipper ^>= 0.13
+                        , vector ^>= 0.13.1.0
                         , vty ^>= 5.38
                         , word-wrap ^>= 0.5
-                        , vector ^>= 0.13.1.0
     hs-source-dirs:     app
     other-modules:      BrickUI
                         , AppState
                         , AppTopLevel
-                        , Util
                         , AppInterpState
                         , AppConfig
                         , DrawSourceViewer
@@ -57,7 +62,6 @@ executable ghcitui
                         , HelpText
                         -- Cabal autogen module for package version info.
                         , Paths_ghcitui
-                        , SourceWindow
     ghc-options:        -rtsopts
                         -threaded
                         -Wall
@@ -75,8 +79,8 @@ executable ghcitui
                         MonoLocalBinds
                         NamedFieldPuns
 
-library ghcitui-lib
-    hs-source-dirs:     lib
+library ghcitui-core
+    hs-source-dirs:     lib/ghcitui-core
     build-depends:      base >= 4.17 && < 5
                         , array ^>= 0.5.4.0
                         , containers >= 0.6.7 && < 0.8
@@ -109,6 +113,27 @@ library ghcitui-lib
                         MonoLocalBinds
                         NamedFieldPuns
 
+library ghcitui-brick
+    hs-source-dirs:     lib/ghcitui-brick
+    build-depends:      base >= 4.17 && < 5
+                        , brick
+                        , containers >= 0.6.7 && < 0.8
+                        , errors ^>= 2.3.0
+                        , ghcitui-core
+                        , microlens ^>= 0.4.13.1
+                        , microlens-th ^>= 0.4.3.14
+                        , text ^>= 2.0.2
+                        , vector ^>= 0.13.1.0
+    exposed-modules:    Ghcitui.Brick.SourceWindow
+    ghc-options:        -Wall
+                        -Wcompat
+                        -Wincomplete-record-updates
+                        -Wpartial-fields
+                        -Wredundant-constraints
+    default-language:   Haskell2010
+    default-extensions: OverloadedStrings
+                        MonoLocalBinds
+                        NamedFieldPuns
 
 test-suite spec
     hs-source-dirs:     test
@@ -116,7 +141,7 @@ test-suite spec
     type:               exitcode-stdio-1.0
     build-depends:      base >= 4.17 && < 5
                         , hspec ^>= 2.11.5
-                        , ghcitui-lib
+                        , ghcitui-core
     other-modules:      LocSpec
                         , UtilSpec
     default-language:   Haskell2010

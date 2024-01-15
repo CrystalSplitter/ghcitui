@@ -5,7 +5,7 @@ module DrawSourceViewer (drawSourceViewer) where
 import qualified Brick as B
 import qualified Brick.Widgets.Center as B
 import Brick.Widgets.Core ((<+>), (<=>))
-import Control.Error
+import Control.Error (fromMaybe)
 import Data.Function ((&))
 import Data.Functor ((<&>))
 import qualified Data.Text as T
@@ -16,10 +16,10 @@ import Lens.Micro ((^.))
 import AppState (AppState)
 import qualified AppState
 import AppTopLevel (AppName (..))
+import qualified Ghcitui.Brick.SourceWindow as SourceWindow
 import qualified Ghcitui.Ghcid.Daemon as Daemon
 import qualified Ghcitui.Loc as Loc
-import qualified SourceWindow
-import qualified Util
+import qualified Ghcitui.Util as Util
 
 -- | Make the primary viewport widget.
 drawSourceViewer :: AppState AppName -> B.Widget AppName
@@ -95,7 +95,7 @@ drawSourceViewer' s sourceWindow = composedTogether
     isSelectedLine lineno = Just lineno == sourceWindow ^. SourceWindow.srcSelectedLineL
 
     composedTogether :: B.Widget AppName
-    composedTogether =  SourceWindow.renderSourceWindow createWidget sourceWindow
+    composedTogether = SourceWindow.renderSourceWindow createWidget sourceWindow
       where
         createWidget lineno _old lineTxt =
             styliseLine $ composedTogetherHelper lineno lineTxt
@@ -152,13 +152,13 @@ drawSourceViewer' s sourceWindow = composedTogether
                 , gutterDigitWidth = Util.getNumDigits $ sourceWindowLength sourceWindow
                 , isSelected = isSelectedLine lineno
                 }
-            where
-                breakpoints :: [Int]
-                breakpoints =
-                    maybe
-                        mempty
-                        (\f -> Daemon.getBpInFile f (AppState.interpState s))
-                        (AppState.selectedFile s)
+          where
+            breakpoints :: [Int]
+            breakpoints =
+                maybe
+                    mempty
+                    (\f -> Daemon.getBpInFile f (AppState.interpState s))
+                    (AppState.selectedFile s)
 
     originalLookupLineNo :: Int
     originalLookupLineNo =

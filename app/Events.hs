@@ -1,5 +1,5 @@
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module Events (handleEvent, handleCursorPosition) where
 
@@ -19,10 +19,10 @@ import AppState
 import AppTopLevel
     ( AppName (..)
     )
+import qualified Ghcitui.Brick.SourceWindow as SourceWindow
 import qualified Ghcitui.Ghcid.Daemon as Daemon
 import qualified Ghcitui.Loc as Loc
-import qualified SourceWindow
-import Util (showT)
+import Ghcitui.Util (showT)
 
 -- | Handle any Brick event and update the state.
 handleEvent :: B.BrickEvent AppName e -> B.EventM AppName (AppState AppName) ()
@@ -250,7 +250,6 @@ handleSrcWindowEvent (B.VtyEvent (V.EvKey key ms))
         moveSelectedLineby 1
     | key `elem` [V.KUp, V.KChar 'k'] = do
         moveSelectedLineby (-1)
-
     | key == V.KPageDown = do
         scrollPage SourceWindow.Down
     | key == V.KPageUp = do
@@ -287,7 +286,7 @@ moveSelectedLineby movAmnt = do
     -- These two lines need to be re-rendered.
     invalidateCachedLine oldLineno
     invalidateCachedLine newLineno
-    B.put $ writeDebugLog ("Selected line is: " <> Util.showT newLineno) movedAppState
+    B.put $ writeDebugLog ("Selected line is: " <> showT newLineno) movedAppState
 
 scrollPage :: SourceWindow.ScrollDir -> B.EventM AppName (AppState AppName) ()
 scrollPage dir = do
@@ -342,7 +341,7 @@ invalidateLineCache = B.invalidateCache
 
 -- | Run a DaemonIO function on a given interpreter state, within an EventM monad.
 runDaemon
-    :: (Ord n) 
+    :: (Ord n)
     => (Daemon.InterpState () -> Daemon.DaemonIO (Daemon.InterpState ()))
     -> AppState n
     -> B.EventM n m (AppState n)
@@ -360,7 +359,9 @@ runDaemon2
     -> AppState n
     -> B.EventM n m (AppState n, a)
 runDaemon2 f appState = do
-    (interp, x) <- liftIO $ (Daemon.run . f) appState.interpState >>= \case
+    (interp, x) <-
+        liftIO $
+            (Daemon.run . f) appState.interpState >>= \case
                 Right out -> pure out
                 Left er -> error $ show er
     newState <- selectPausedLine appState{interpState = interp}
