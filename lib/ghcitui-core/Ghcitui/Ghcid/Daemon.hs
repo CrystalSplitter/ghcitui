@@ -60,7 +60,7 @@ import Data.String.Interpolate (i)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified Language.Haskell.Ghcid as Ghcid
-import System.IO (stderr)
+import qualified System.IO as IO
 
 import Ghcitui.Ghcid.LogConfig (LogLevel (..), LogOutput (..))
 import qualified Ghcitui.Ghcid.ParseContext as ParseContext
@@ -164,11 +164,20 @@ startup
 startup cmd wd logOutput = do
     -- We don't want any highlighting or colours.
     let realCmd = "env TERM='dumb' " <> cmd
-    let startOp = Ghcid.startGhci realCmd (Just wd) (\_ _ -> pure ())
+    let startOp = Ghcid.startGhci realCmd (Just wd) startupStreamCallback
     (ghci, _) <- liftIO startOp
     let state = emptyInterpreterState ghci logOutput
     logDebug "|startup| GHCi Daemon initted" state
     updateState state
+
+startupStreamCallback :: Ghcid.Stream -> String -> IO ()
+startupStreamCallback stream msg = do
+    IO.hPutStrLn handle [i|[ghcid startup:#{prefix}] #{msg}|]
+    IO.hFlush handle
+  where
+    (handle, prefix) = case stream of
+        Ghcid.Stdout -> (IO.stdout, "out" :: String)
+        Ghcid.Stderr -> (IO.stderr, "err" :: String)
 
 -- | Shut down the GHCi Daemon.
 quit :: InterpState a -> IO (InterpState a)
@@ -498,7 +507,7 @@ logHelper outputLoc prefix msg = do
     liftIO $ case outputLoc of
         LogOutputFile path -> T.appendFile path fmtMsg
         LogOutputStdOut -> T.putStrLn fmtMsg
-        LogOutputStdErr -> T.hPutStrLn stderr fmtMsg
+        LogOutputStdErr -> T.hPutStrLn IO.stderr fmtMsg
   where
     fmtMsg = T.unlines [prefix <> line | line <- T.lines msg]
 
