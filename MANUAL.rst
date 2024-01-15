@@ -8,13 +8,21 @@ CLI Synopsis
 
 .. code-block::
 
-  Usage: ghcitui [OPTIONS] [TARGET]
+  Usage: ghcitui [--version] [--debug-console] [-v] [--daemon-log LOGFILE]
+                [-c|--cmd CMD] [-C|--workdir DIR] [TARGET]
 
     ghcitui: A TUI interface for GHCi
 
   Available options:
     -h,--help                Show this help text
-    -d,--debug-console       Display the debug console
+    --version                Print the version number and exit
+    --debug-console          Display the debug console
+    -v                       Set verbosity for output logs. Pass multiple times
+                            (e.g -vvv) to increase the logging. Use --daemon-log
+                            to specify where the logs go.
+    --daemon-log LOGFILE     File path for debugging daemon logs. Used with -v.
+                            Setting this to 'stdout' or 'stderr' sends logs to
+                            each, respectively. Defaults to /tmp/ghcitui.log.
     -c,--cmd CMD             Command to start the internal interpreter
     -C,--workdir DIR         Set working dir
 
@@ -129,6 +137,7 @@ Live Interpreter (REPL)
 - ``Ctrl+x``: Toggle between the Source Viewer and the Live Interpreter
   panels.
 - ``<Esc>``: Switch to Source Viewer.
+- ``<Esc>`` while in scrolling mode: Exit scrolling mode.
 - ``<Up>``: Scroll back in time through the REPL command history.
 - ``<Down>``: Scroll forward in time through the REPL command history.
 - ``<PgUp>``: Scroll the Live Interpreter window one page up.

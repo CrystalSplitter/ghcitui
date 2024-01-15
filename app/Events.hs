@@ -425,6 +425,8 @@ handleDialogHelp (B.VtyEvent (V.EvKey key _))
         B.put $ appState{activeWindow = ActiveCodeViewport}
     | key == V.KPageDown = B.vScrollPage scroller B.Down
     | key == V.KPageUp = B.vScrollPage scroller B.Up
+    | key == V.KDown = B.vScrollBy scroller 1
+    | key == V.KUp = B.vScrollBy scroller (-1)
     | otherwise = pure ()
   where
     scroller = B.viewportScroll HelpViewport
