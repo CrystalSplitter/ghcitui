@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module AppConfig (AppConfig(..), defaultConfig, resolveStartupSplashPath) where
+module AppConfig (AppConfig (..), defaultConfig, resolveStartupSplashPath) where
 
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
@@ -31,6 +31,7 @@ data AppConfig = AppConfig
     -- ^ Display the debug console on start up.
     , getDebugLogPath :: !FilePath
     , getVerbosity :: !Int
+    -- ^ Verbosity level.
     , getStartupSplashPath :: !(Maybe FilePath)
     , getCmd :: !T.Text
     -- ^ Command to run to initialise the interpreter.

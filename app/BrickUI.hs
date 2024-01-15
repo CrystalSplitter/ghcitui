@@ -31,12 +31,12 @@ import qualified AppState
 import AppTopLevel (AppName (..))
 import qualified DrawSourceViewer
 import qualified Events
+import qualified Ghcitui.Brick.SourceWindow as SourceWindow
 import qualified Ghcitui.Ghcid.Daemon as Daemon
 import qualified Ghcitui.Loc as Loc
 import qualified Ghcitui.NameBinding as NameBinding
+import qualified Ghcitui.Util as Util
 import qualified HelpText
-import qualified SourceWindow
-import qualified Util
 
 -- | Alias for 'AppState AppName' convenience.
 type AppS = AppState AppName
@@ -316,7 +316,8 @@ brickApp =
 -- | Start the Brick UI
 launchBrick :: AppConfig.AppConfig -> T.Text -> FilePath -> IO ()
 launchBrick conf target cwd = do
-    T.putStrLn $ "Starting up GHCiTUI with: '" <> AppConfig.getCmd conf <> "'..."
+    T.putStrLn $ "Starting up GHCiTUI with: `" <> AppConfig.getCmd conf <> "`..."
+    T.putStrLn "This can take a while..."
     initialState <- makeInitialState conf target cwd
     _ <- B.defaultMain brickApp initialState
     T.putStrLn "GHCiTUI has shut down; have a nice day :)"

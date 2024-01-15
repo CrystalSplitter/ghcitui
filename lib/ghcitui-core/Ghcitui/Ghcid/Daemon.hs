@@ -19,7 +19,7 @@ module Ghcitui.Ghcid.Daemon
 
       -- * Startup and shutdown
     , startup
-    , StartupConfig(..)
+    , StartupConfig (..)
     , quit
 
       -- * Base operations with the daemon
@@ -50,7 +50,7 @@ module Ghcitui.Ghcid.Daemon
     , run
     , DaemonIO
     , DaemonError
-    , LogOutput(..)
+    , LogOutput (..)
     ) where
 
 import Control.Error
@@ -62,14 +62,14 @@ import qualified Data.Text.IO as T
 import qualified Language.Haskell.Ghcid as Ghcid
 import System.IO (stderr)
 
+import Ghcitui.Ghcid.LogConfig (LogLevel (..), LogOutput (..))
 import qualified Ghcitui.Ghcid.ParseContext as ParseContext
+import Ghcitui.Ghcid.StartupConfig (StartupConfig)
+import qualified Ghcitui.Ghcid.StartupConfig as StartupConfig
 import qualified Ghcitui.Loc as Loc
 import qualified Ghcitui.NameBinding as NameBinding
 import Ghcitui.Util (showT)
 import qualified Ghcitui.Util as Util
-import Ghcitui.Ghcid.LogConfig (LogLevel(..), LogOutput(..))
-import Ghcitui.Ghcid.StartupConfig (StartupConfig)
-import qualified Ghcitui.Ghcid.StartupConfig as StartupConfig
 
 data InterpState a = InterpState
     { _ghci :: Ghcid.Ghci
@@ -111,7 +111,7 @@ instance Show (InterpState a) where
          in msg
 
 {- | Create an empty/starting interpreter state.
-Usually you don't want to call this directly. Instead use 'startup'.
+     Usually you don't want to call this directly. Instead use 'startup'.
 -}
 emptyInterpreterState :: (Monoid a) => Ghcid.Ghci -> StartupConfig -> InterpState a
 emptyInterpreterState ghci startupConfig =
@@ -132,14 +132,15 @@ emptyInterpreterState ghci startupConfig =
 
 -- | Reset anything context-based in a 'InterpState'.
 contextReset :: (Monoid a) => InterpState a -> InterpState a
-contextReset state = state {
-    func = Nothing
-    , pauseLoc = Nothing
-    , stack = mempty
-    , bindings = Right mempty
-    , status = Right mempty
-    , traceHist = mempty
-}
+contextReset state =
+    state
+        { func = Nothing
+        , pauseLoc = Nothing
+        , stack = mempty
+        , bindings = Right mempty
+        , status = Right mempty
+        , traceHist = mempty
+        }
 
 -- | Append a string to the interpreter's history.
 appendExecHist :: T.Text -> InterpState a -> InterpState a
@@ -278,8 +279,7 @@ stepInto
 stepInto func = execMuted (":step " <> func)
 
 {- | Analogue to @:history@.
-
-Returns either the 'Left' error messager, or 'Right': list the trace breakpoints.
+     Returns either a 'Left' error message, or a 'Right' list of trace breakpoints.
 -}
 history :: InterpState a -> DaemonIO (InterpState a, Either T.Text [T.Text])
 history state = do
@@ -309,8 +309,8 @@ load :: (Monoid a) => FilePath -> InterpState a -> DaemonIO (InterpState a)
 load filepath = execMuted (T.pack $ ":load " <> filepath)
 
 {- | Execute an arbitrary command, as if it was directly written in GHCi.
-It is unlikely you want to call this directly, and instead want to call
-one of the wrapped functions or 'execMuted' or 'execCleaned'.
+     It is unlikely you want to call this directly, and instead want to call
+     one of the wrapped functions or 'execMuted' or 'execCleaned'.
 -}
 exec :: (Monoid a) => T.Text -> InterpState a -> ExceptT DaemonError IO (InterpState a, [T.Text])
 exec cmd state@InterpState{_ghci} = do
@@ -476,7 +476,7 @@ logDebug msg state =
   where
     output = logOutput state
 
---Log a message at the Error level.
+-- Log a message at the Error level.
 logError :: (MonadIO m) => T.Text -> InterpState a -> m ()
 logError msg state =
     liftIO $ do
@@ -514,7 +514,7 @@ data DaemonError
     deriving (Eq, Show)
 
 {- | An IO operation that can fail into a DaemonError.
-Execute them to IO through 'run'.
+     Execute them to IO through 'run'.
 -}
 type DaemonIO r = ExceptT DaemonError IO r
 
