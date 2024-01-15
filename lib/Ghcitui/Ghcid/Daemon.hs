@@ -208,7 +208,10 @@ updateContext state@InterpState{_ghci} = do
         else do
             let ctx = ParseContext.parseContext feedback
             case ctx of
-                ParseContext.PCError er -> error [i|Failed to update context: #{er}|]
+                ParseContext.PCError er -> do
+                    let msg = [i|Failed to update context: #{er}|]
+                    logError ("|updateContext| " <> msg) state
+                    throwE $ UpdateContextError msg
                 ParseContext.PCNoContext -> pure $ contextReset state
                 ParseContext.PCContext
                     ParseContext.ParseContextOut{func, filepath, pcSourceRange} ->
@@ -232,7 +235,11 @@ updateBindings state@InterpState{_ghci} = do
         state
     case ParseContext.parseBindings feedback of
         Right bindings -> pure (state{bindings = pure bindings})
-        Left er -> throwE (UpdateBindingError [i|Failed to update bindings: #{er}|])
+        Left er -> do
+            logError ("|updateBingings| " <> msg) state
+            throwE $ UpdateBindingError msg
+          where
+            msg = [i|Failed to update bindings: #{er}|]
 
 -- | Update the source map given any app state changes.
 updateModuleFileMap :: InterpState a -> DaemonIO (InterpState a)
@@ -243,7 +250,7 @@ updateModuleFileMap state@InterpState{_ghci, moduleFileMap} = do
     logDebug [i||updateModuleFileMap|: OUT: #{packedMsgs}\n|] state
     modules <- case ParseContext.parseShowModules packedMsgs of
         Right modules -> pure modules
-        Left er -> error $ show er
+        Left er -> throwE (GenericError (showT er))
     logDebug [i||updateModuleFileMap| modules: #{modules}|] state
     let addedModuleMap = Loc.moduleFileMapFromList modules
     let newModuleFileMap = addedModuleMap <> moduleFileMap
@@ -469,7 +476,7 @@ logDebug msg state =
   where
     output = logOutput state
 
-{- Log a message at the Error level.
+--Log a message at the Error level.
 logError :: (MonadIO m) => T.Text -> InterpState a -> m ()
 logError msg state =
     liftIO $ do
@@ -477,7 +484,6 @@ logError msg state =
             logHelper output "[ERROR]: " msg
   where
     output = logOutput state
--}
 
 logHelper
     :: (MonadIO m)
@@ -504,6 +510,7 @@ data DaemonError
     | UpdateBindingError T.Text
     | UpdateBreakListError T.Text
     | BreakpointError T.Text
+    | UpdateContextError T.Text
     deriving (Eq, Show)
 
 {- | An IO operation that can fail into a DaemonError.
