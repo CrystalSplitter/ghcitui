@@ -19,8 +19,8 @@ CLI SYNOPSIS
 
 STARTING AND STOPPING
    Starting
-       GHCiTUI runs a REPL in the current directory by default. By default, it
-       launches cabal repl.
+       GHCiTUI  runs  a REPL in the current directory by default. By default,
+       it launches cabal repl.
 
           $ cd your/cabal/project/root/directory
           $ ghcitui
@@ -30,14 +30,14 @@ STARTING AND STOPPING
           $ ghcitui -C some/other/directory
 
    Stopping
-       To  quit,  press  <ESC>  or q while in the code viewport panel to quit.
-       While not in the code viewport panel, you may press <ESC> to get to the
-       viewport panel.
+       To quit, press <ESC> or q while in the code viewport  panel  to  quit.
+       While  not  in  the code viewport panel, you may press <ESC> to get to
+       the viewport panel.
 
 LAYOUT
-       GHCiTUI is an in-terminal viewer for GHCi. The TUI is  broken  up  into
-       three primary panels, with some additional auxiliary panels for special
-       use cases:
+       GHCiTUI is an in-terminal viewer for GHCi. The TUI is broken  up  into
+       three  primary  panels, with some additional auxiliary panels for spe‐
+       cial use cases:
 
           ┌──────────────────┬──────┐
           │                  │ Info │
@@ -51,36 +51,38 @@ LAYOUT
           │                  │      │
           └──────────────────┴──────┘
 
-       Source  Viewer:  This  panel shows source code. You can step, continue,
+       Source Viewer: This panel shows source code. You can  step,  continue,
        and toggle breakpoints among other operations in this panel.
 
-       Live Interpreter: This panel shows the GHCi/REPL passthrough.  You  can
-       enter  expressions and GHCi commands here like you would normally, with
+       Live  Interpreter: This panel shows the GHCi/REPL passthrough. You can
+       enter expressions and GHCi commands here like you would normally, with
        some additional keybindings.
 
-       Info: This panel displays miscellaneous info  about  whatever  is  cur‐
-       rently  running.  For  example,  it  can  display the current bindings,
+       Info: This panel displays miscellaneous info about  whatever  is  cur‐
+       rently  running.  For  example,  it  can display the current bindings,
        loaded modules, and the current program trace.
 
 NAVIGATION
-       At any point in time, you can revert back to the  Source  Viewer  panel
-       with  the  <Esc>  key,  and you can always quit by hitting <Esc> in the
+       At any point in time, you can revert back to the Source  Viewer  panel
+       with  the  <Esc>  key, and you can always quit by hitting <Esc> in the
        Source Viewer panel.
 
-       On top of each panel is a label where the navigation key combination is
-       located.  For example, the key combination above the Modules panel dis‐
-       plays [M].  Pressing this key combination will move the focus  to  that
-       panel.
+       On top of each panel is a label where the navigation  key  combination
+       is  located.  For example, the key combination above the Modules panel
+       displays [M].  Pressing this key combination will move  the  focus  to
+       that panel.
 
 KEYBINDINGS
-       At  this time, keybindings are hardcoded. This will hopefully change in
+       At this time, keybindings are hardcoded. This will hopefully change in
        the future with a keybinding configuration file.
 
    Source Viewer
        • ?: Display help inside GHCiTUI.
 
-       • Ctrl+x: Toggle between the Source Viewer  and  the  Live  Interpreter
+       • Ctrl+x:  Toggle  between  the Source Viewer and the Live Interpreter
          panels.
+
+       • M: Switch to the module panel.
 
        • <Esc>, q: Quit.
 
@@ -94,19 +96,19 @@ KEYBINDINGS
 
        • +, -: Increase/decrease the left panel sizes.
 
-       • b: Toggle breakpoint at current line. Not every line in a source file
-         can have a breakpoint placed on it.
+       • b: Toggle breakpoint at current line. Not every  line  in  a  source
+         file can have a breakpoint placed on it.
 
        • s: Advance execution by one step. Same as the :step in GHCi.
 
-       • c:  Advance  execution  until  next  breakpoint. Same as :continue in
+       • c:  Advance  execution  until  next breakpoint. Same as :continue in
          GHCi.
 
-       • t: Advance execution until next breakpoint  under  tracing.  Same  as
+       • t: Advance execution until next breakpoint under  tracing.  Same  as
          :trace in GHCi.
 
    Live Interpreter (REPL)
-       • Ctrl+x:  Toggle  between  the  Source Viewer and the Live Interpreter
+       • Ctrl+x:  Toggle  between  the Source Viewer and the Live Interpreter
          panels.
 
        • <Esc>: Switch to Source Viewer.
@@ -132,7 +134,7 @@ KEYBINDINGS
 
        • Ctrl+x: Switch to the Live Interpreter.
 
-       • <Esc>: Switch to Source Viewer.
+       • <Esc>, C: Switch to Source Viewer.
 
        • <Up>, k: Move the module selection up.
 
@@ -142,4 +144,4 @@ KEYBINDINGS
 
        • <Enter>, o: Open the selected module.
 
-                                                              GHCITUI MANUAL()
+                                                             GHCITUI MANUAL()

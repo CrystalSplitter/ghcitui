@@ -99,7 +99,7 @@ At any point in time, you can revert back to the Source Viewer panel with the
 panel.
 
 On top of each panel is a label where the navigation key combination is located.
-For example, the key combination above the Modules panel displays `[M]`.
+For example, the key combination above the Modules panel displays ``[M]``.
 Pressing this key combination will move the focus to that panel.
 
 -----------
@@ -116,6 +116,7 @@ Source Viewer
 - ``?``: Display help inside GHCiTUI.
 - ``Ctrl+x``: Toggle between the Source Viewer and the Live Interpreter
   panels.
+- ``M``: Switch to the module panel.
 - ``<Esc>``, ``q``: Quit.
 - ``<Up>``, ``k``: Move the cursor up. (``j`` and ``k`` from Vim keybinds)
 - ``<Down>``, ``j``: Move the cursor down. (``j`` and ``k`` from Vim keybinds).
@@ -153,7 +154,7 @@ Modules
 
 - ``?``: Display help inside GHCiTUI.
 - ``Ctrl+x``: Switch to the Live Interpreter.
-- ``<Esc>``: Switch to Source Viewer.
+- ``<Esc>``, ``C``: Switch to Source Viewer.
 - ``<Up>``, ``k``: Move the module selection up.
 - ``<Down>``, ``j``: Move the module selection down.
 - ``+``, ``-``: Increase/decrease the info panel size.
