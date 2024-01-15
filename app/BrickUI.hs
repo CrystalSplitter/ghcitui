@@ -48,11 +48,11 @@ appDraw s =
     ]
 
 dialogMaxWidth :: (Integral a) => a
-dialogMaxWidth = 90
+dialogMaxWidth = 94
 
 {- | Draw the dialog layer.
 
-If there's no dialog, returns an 'emptyWidget'.
+     If there's no dialog, returns an 'emptyWidget'.
 -}
 drawDialogLayer :: AppS -> B.Widget AppName
 -- Quit Dialog

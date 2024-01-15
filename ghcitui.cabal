@@ -29,6 +29,7 @@ extra-source-files: CHANGELOG.md
                     , LICENSE
                     , MANUAL.rst
                     , README.md
+                    , gen/MANUAL.txt
 
 source-repository head
     type:       git
@@ -40,6 +41,7 @@ executable ghcitui
                         , brick
                         , containers >= 0.6.7 && < 0.8
                         , errors ^>= 2.3.0
+                        , file-embed ^>= 0.0.15
                         , ghcitui-core
                         , ghcitui-brick
                         , microlens ^>= 0.4.13.1
