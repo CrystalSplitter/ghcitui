@@ -54,4 +54,7 @@ jobs:
         cabal test \
           --enable-optimization=1 \
           all
+    - name: Cabal check
+      run: |
+        cabal check
 
