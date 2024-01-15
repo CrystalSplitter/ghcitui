@@ -70,8 +70,10 @@ handleInfoEvent ev = do
         -- Resizing
         B.VtyEvent (V.EvKey (V.KChar '-') []) -> do
             B.put (AppState.changeInfoWidgetSize (-1) appState)
+            invalidateLineCache
         B.VtyEvent (V.EvKey (V.KChar '+') []) -> do
             B.put (AppState.changeInfoWidgetSize 1 appState)
+            invalidateLineCache
         _ -> pure ()
     B.invalidateCacheEntry ModulesViewport
 
@@ -259,10 +261,12 @@ handleSrcWindowEvent (B.VtyEvent (V.EvKey key ms))
         appState <- B.get
         B.put (AppState.changeInfoWidgetSize (-1) appState)
         B.invalidateCacheEntry ModulesViewport
+        invalidateLineCache
     | key == V.KChar '-' && null ms = do
         appState <- B.get
         B.put (AppState.changeInfoWidgetSize 1 appState)
         B.invalidateCacheEntry ModulesViewport
+        invalidateLineCache
     | key == V.KChar 'x' && ms == [V.MCtrl] =
         B.put . toggleActiveLineInterpreter =<< B.get
     | key == V.KChar 'M' = do
@@ -291,6 +295,7 @@ scrollPage dir = do
     B.put
         . (\srcW -> Lens.set AppState.sourceWindow srcW appState)
         =<< SourceWindow.srcWindowScrollPage dir (appState ^. AppState.sourceWindow)
+    invalidateLineCache
 
 -- | Open up the quit dialog. See 'quit' for the actual quitting.
 confirmQuit :: B.EventM AppName (AppState AppName) ()
