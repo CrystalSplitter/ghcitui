@@ -25,11 +25,11 @@ author:             Jordan 'CrystalSplitter' R AW
 maintainer:         crystal@crystalwobsite.gay
 copyright:          Jordan R AW
 category:           Debug
-extra-source-files: CHANGELOG.md
-                    , LICENSE
-                    , MANUAL.rst
-                    , README.md
+extra-source-files: LICENSE
                     , gen/MANUAL.txt
+extra-doc-files: CHANGELOG.md
+                 , MANUAL.rst
+                 , README.md
 
 source-repository head
     type:       git
@@ -38,12 +38,12 @@ source-repository head
 executable ghcitui
     main-is:            Main.hs
     build-depends:      base >= 4.17 && < 5
-                        , brick
+                        , brick >= 2.2 && < 2.4
                         , containers >= 0.6.7 && < 0.8
                         , errors ^>= 2.3.0
                         , file-embed ^>= 0.0.15
-                        , ghcitui-core
                         , ghcitui-brick
+                        , ghcitui-core
                         , microlens ^>= 0.4.13.1
                         , microlens-th ^>= 0.4.3.14
                         , optparse-applicative ^>= 0.18.1.0
@@ -51,14 +51,14 @@ executable ghcitui
                         , text ^>= 2.0.2
                         , text-zipper ^>= 0.13
                         , vector ^>= 0.13.1.0
-                        , vty ^>= 5.38
+                        , vty >= 5.38 && < 6.1
                         , word-wrap ^>= 0.5
     hs-source-dirs:     app
     other-modules:      BrickUI
+                        , AppConfig
+                        , AppInterpState
                         , AppState
                         , AppTopLevel
-                        , AppInterpState
-                        , AppConfig
                         , DrawSourceViewer
                         , Events
                         , HelpText
@@ -75,12 +75,12 @@ executable ghcitui
     default-language:   Haskell2010
     default-extensions: DuplicateRecordFields
                         LambdaCase
+                        MonoLocalBinds
+                        NamedFieldPuns
                         OverloadedRecordDot
                         OverloadedStrings
                         RecordWildCards
                         TupleSections
-                        MonoLocalBinds
-                        NamedFieldPuns
 
 library ghcitui-core
     hs-source-dirs:     lib/ghcitui-core
@@ -96,11 +96,11 @@ library ghcitui-core
                         , text ^>= 2.0.2
                         , transformers ^>= 0.6.1.0
     exposed-modules:    Ghcitui.Ghcid.Daemon
-                        , Ghcitui.Ghcid.ParseContext
                         , Ghcitui.Ghcid.LogConfig
+                        , Ghcitui.Ghcid.ParseContext
                         , Ghcitui.Loc
-                        , Ghcitui.Util
                         , Ghcitui.NameBinding
+                        , Ghcitui.Util
     other-modules:      Ghcitui.Ghcid.StartupConfig
     ghc-options:        -Wall
                         -Wcompat
@@ -108,18 +108,18 @@ library ghcitui-core
                         -Wpartial-fields
                         -Wredundant-constraints
     default-language:   Haskell2010
-    default-extensions: OverloadedRecordDot
-                        DuplicateRecordFields
+    default-extensions: DuplicateRecordFields
+                        MonoLocalBinds
+                        NamedFieldPuns
+                        OverloadedRecordDot
                         OverloadedStrings
                         RecordWildCards
                         TupleSections
-                        MonoLocalBinds
-                        NamedFieldPuns
 
 library ghcitui-brick
     hs-source-dirs:     lib/ghcitui-brick
     build-depends:      base >= 4.17 && < 5
-                        , brick
+                        , brick >= 2.2 && < 2.4
                         , containers >= 0.6.7 && < 0.8
                         , errors ^>= 2.3.0
                         , ghcitui-core
@@ -143,8 +143,8 @@ test-suite spec
     main-is:            Spec.hs
     type:               exitcode-stdio-1.0
     build-depends:      base >= 4.17 && < 5
-                        , hspec ^>= 2.11.5
                         , ghcitui-core
+                        , hspec ^>= 2.11.5
     other-modules:      LocSpec
                         , UtilSpec
     default-language:   Haskell2010
