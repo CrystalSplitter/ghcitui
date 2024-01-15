@@ -64,6 +64,7 @@ executable ghcitui
                         , HelpText
                         -- Cabal autogen module for package version info.
                         , Paths_ghcitui
+    autogen-modules:    Paths_ghcitui
     ghc-options:        -rtsopts
                         -threaded
                         -Wall
