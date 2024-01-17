@@ -56,5 +56,5 @@ jobs:
           all
     - name: Cabal check
       run: |
-        cabal check
+        cabal check | grep 'No errors or warnings could be found'
 
