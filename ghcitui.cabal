@@ -26,6 +26,7 @@ maintainer:         crystal@crystalwobsite.gay
 copyright:          Jordan R AW
 category:           Debug
 extra-source-files: LICENSE
+                    , assets/splash.txt
                     , gen/MANUAL.txt
 extra-doc-files: CHANGELOG.md
                  , MANUAL.rst
@@ -64,6 +65,7 @@ executable ghcitui
                         , HelpText
                         -- Cabal autogen module for package version info.
                         , Paths_ghcitui
+                        , SplashTextEmbed
     autogen-modules:    Paths_ghcitui
     ghc-options:        -rtsopts
                         -threaded
