@@ -17,6 +17,8 @@ This is an experimental front-end terminal interface for
 `ghci`. It provides a source viewer, keybindings, an interactive
 interpreter, and a local context viewer.
 
+![Splash Image For GHCiTUI](docs/assets/20240116_splash.png)
+
 ## Installation
 
 As this project is experimental, currently installing from
