@@ -144,4 +144,11 @@ KEYBINDINGS
 
        • <Enter>, o: Open the selected module.
 
+REPORTING BUGS/FEATURE REQUESTS
+       You   can    file    bugs    and    feature    requests    both    at:
+       https://github.com/CrystalSplitter/ghcitui/issues
+
+       Please  check to see if the bug/request already exists before filing a
+       new one.
+
                                                              GHCITUI MANUAL()

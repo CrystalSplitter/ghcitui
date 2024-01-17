@@ -159,3 +159,13 @@ Modules
 - ``<Down>``, ``j``: Move the module selection down.
 - ``+``, ``-``: Increase/decrease the info panel size.
 - ``<Enter>``, ``o``: Open the selected module.
+
+-------------------------------
+Reporting Bugs/Feature Requests
+-------------------------------
+
+You can file bugs and feature requests both at:
+https://github.com/CrystalSplitter/ghcitui/issues
+
+Please check to see if the bug/request already exists before filing
+a new one.

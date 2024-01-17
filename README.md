@@ -13,6 +13,8 @@
      (' _ '                    \/_/   \/_____/  \/_/
 ```
 
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/CrystalSplitter/ghcitui/haskell.yaml)
+
 This is an experimental front-end terminal interface for 
 `ghci`. It provides a source viewer, keybindings, an interactive
 interpreter, and a local context viewer.
@@ -28,7 +30,7 @@ See [INSTALLATION.rst](./INSTALL.rst) for details.
 
 ## Basic Usage
 
-For detailed usage, please see the [manual](./MANUAL.rst).
+For full usage, please see the [manual](./MANUAL.rst).
 
 ### Starting the TUI
 
