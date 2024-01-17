@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module HelpText where
+module HelpText (helpText) where
 
 import Data.String (IsString)
 

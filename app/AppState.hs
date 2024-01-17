@@ -31,7 +31,7 @@ module AppState
 import qualified Brick as B
 import qualified Brick.Widgets.Edit as BE
 import Control.Error (atMay, fromMaybe)
-import Control.Exception (IOException, SomeException, catch, try)
+import Control.Exception (IOException, try)
 import Control.Monad.IO.Class (MonadIO (..))
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
@@ -41,7 +41,7 @@ import qualified Data.Vector as Vec
 import Lens.Micro ((^.))
 import qualified Lens.Micro as Lens
 
-import AppConfig (AppConfig (..), resolveStartupSplashPath)
+import AppConfig (AppConfig (..), loadStartupSplash)
 import qualified AppInterpState as AIS
 import AppTopLevel (AppName (..))
 
@@ -303,12 +303,7 @@ makeInitialState appConfig target cwd = do
         Daemon.run (Daemon.startup (T.unpack fullCmd) cwd' startupConfig) >>= \case
             Right iState -> pure iState
             Left er -> error (show er)
-    splashContents <-
-        catch
-            (Just <$> (T.readFile =<< resolveStartupSplashPath appConfig))
-            -- The splash is never critical.
-            -- Just put nothing there if we can't find it.
-            (const (pure Nothing) :: SomeException -> IO (Maybe T.Text))
+    splashContents <- loadStartupSplash appConfig
     let selectedFile' =
             case Loc.moduleFileMapAssocs (Daemon.moduleFileMap interpState) of
                 -- If we just have one file, select that.
@@ -333,7 +328,7 @@ makeInitialState appConfig target cwd = do
             , sourceMap = mempty
             , _currentWidgetSizes =
                 WidgetSizes
-                    { _wsInfoWidth = 30
+                    { _wsInfoWidth = 35
                     , _wsReplHeight = 11 -- 10 plus 1 for the entry line.
                     }
             , splashContents

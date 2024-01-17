@@ -1,10 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module AppConfig (AppConfig (..), defaultConfig, resolveStartupSplashPath) where
+module AppConfig (AppConfig (..), defaultConfig, loadStartupSplash, userConfigDir) where
 
 import Data.Maybe (fromMaybe)
+import Data.String (IsString)
 import qualified Data.Text as T
 import System.Environment (lookupEnv)
+
+import qualified SplashTextEmbed
 
 userConfigDir :: IO FilePath
 userConfigDir = fromMaybe (error errorMsg) <$> result
@@ -20,9 +23,6 @@ userConfigDir = fromMaybe (error errorMsg) <$> result
             chooseNonEmpty
             mempty
             [lookupEnv "XDG_CONFIG_HOME", fmap (fmap (<> "/.config")) (lookupEnv "HOME")]
-
-defaultSplashPath :: IO FilePath
-defaultSplashPath = fmap (<> "/ghcitui/assets/splash") userConfigDir
 
 data AppConfig = AppConfig
     { getInterpreterPrompt :: !T.Text
@@ -51,5 +51,6 @@ defaultConfig =
         , getStartupCommands = mempty
         }
 
-resolveStartupSplashPath :: AppConfig -> IO FilePath
-resolveStartupSplashPath config = maybe defaultSplashPath pure $ getStartupSplashPath config
+-- | Return the startup screen splash as an IsString.
+loadStartupSplash :: (IsString s) => AppConfig -> IO (Maybe s)
+loadStartupSplash _ = pure (pure SplashTextEmbed.splashText)
