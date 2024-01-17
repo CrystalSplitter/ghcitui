@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               ghcitui
-version:            0.1.0.0
+version:            0.0.1.0
 synopsis:           A Terminal User Interface (TUI) for GHCi
 
 description:
