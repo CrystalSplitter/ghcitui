@@ -10,8 +10,7 @@ import Control.Applicative (many)
 import qualified Data.Text as T
 import qualified Options.Applicative as Opt
 
-import qualified AppConfig
-import BrickUI (launchBrick)
+import qualified Ghcitui.Brick as GB
 
 -- | Holds passed in command line options.
 data CmdOptions = CmdOptions
@@ -85,16 +84,16 @@ main = do
             putStrLn $ programName <> " " <> programVersion
         else do
             let conf =
-                    AppConfig.defaultConfig
-                        { AppConfig.getDebugConsoleOnStart = debugConsole opts
-                        , AppConfig.getVerbosity = verbosity opts
-                        , AppConfig.getDebugLogPath = debugLogPath opts
-                        , AppConfig.getCmd =
+                    GB.defaultConfig
+                        { GB.getDebugConsoleOnStart = debugConsole opts
+                        , GB.getVerbosity = verbosity opts
+                        , GB.getDebugLogPath = debugLogPath opts
+                        , GB.getCmd =
                             if T.null $ cmd opts
-                                then AppConfig.getCmd AppConfig.defaultConfig
+                                then GB.getCmd GB.defaultConfig
                                 else cmd opts
                         }
-            launchBrick conf (target opts) (workdir opts)
+            GB.launchBrick conf (target opts) (workdir opts)
   where
     programName = "ghcitui"
     programDescription = Opt.progDesc (programName <> ": A TUI interface for GHCi")

@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module SplashTextEmbed (splashText) where
+module Ghcitui.Brick.SplashTextEmbed (splashText) where
 
 import Data.String (IsString)
 

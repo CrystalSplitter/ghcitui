@@ -39,34 +39,13 @@ source-repository head
 
 executable ghcitui
     main-is:            Main.hs
-    build-depends:      base >= 4.17 && < 5
-                        , brick >= 2.2 && < 2.4
-                        , containers >= 0.6.7 && < 0.8
-                        , errors ^>= 2.3.0
-                        , file-embed ^>= 0.0.15
+    build-depends:      base
                         , ghcitui-brick
-                        , ghcitui-core
-                        , microlens ^>= 0.4.13.1
-                        , microlens-th ^>= 0.4.3.14
                         , optparse-applicative ^>= 0.18.1.0
-                        , safe ^>= 0.3.19
-                        , text ^>= 2.0.2
-                        , text-zipper ^>= 0.13
-                        , vector ^>= 0.13.1.0
-                        , vty >= 5.38 && < 6.1
-                        , word-wrap ^>= 0.5
+                        , ghcitui
+                        , text
     hs-source-dirs:     app
-    other-modules:      BrickUI
-                        , AppConfig
-                        , AppInterpState
-                        , AppState
-                        , AppTopLevel
-                        , DrawSourceViewer
-                        , Events
-                        , HelpText
-                        -- Cabal autogen module for package version info.
-                        , Paths_ghcitui
-                        , SplashTextEmbed
+    other-modules:      Paths_ghcitui
     autogen-modules:    Paths_ghcitui
     ghc-options:        -rtsopts
                         -threaded
@@ -76,16 +55,11 @@ executable ghcitui
                         -Wpartial-fields
                         -Wredundant-constraints
     default-language:   Haskell2010
-    default-extensions: DuplicateRecordFields
-                        LambdaCase
-                        MonoLocalBinds
-                        NamedFieldPuns
-                        OverloadedRecordDot
+    default-extensions: MonoLocalBinds
                         OverloadedStrings
                         RecordWildCards
-                        TupleSections
 
-library ghcitui-core
+library
     hs-source-dirs:     lib/ghcitui-core
     build-depends:      base >= 4.17 && < 5
                         , array ^>= 0.5.4.0
@@ -125,28 +99,49 @@ library ghcitui-brick
                         , brick >= 2.2 && < 2.4
                         , containers >= 0.6.7 && < 0.8
                         , errors ^>= 2.3.0
-                        , ghcitui-core
+                        , file-embed ^>= 0.0.15
+                        , ghcitui
                         , microlens ^>= 0.4.13.1
                         , microlens-th ^>= 0.4.3.14
+                        , safe ^>= 0.3.19
                         , text ^>= 2.0.2
+                        , text-zipper ^>= 0.13
                         , vector ^>= 0.13.1.0
-    exposed-modules:    Ghcitui.Brick.SourceWindow
+                        , vty >= 5.38 && < 6.1
+                        , word-wrap ^>= 0.5
+    exposed-modules:    Ghcitui.Brick
+    other-modules:      Ghcitui.Brick.AppConfig
+                        , Ghcitui.Brick.AppInterpState
+                        , Ghcitui.Brick.AppState
+                        , Ghcitui.Brick.AppTopLevel
+                        , Ghcitui.Brick.BrickUI
+                        , Ghcitui.Brick.DrawSourceViewer
+                        , Ghcitui.Brick.Events
+                        , Ghcitui.Brick.HelpText
+                        , Ghcitui.Brick.SourceWindow
+                        , Ghcitui.Brick.SplashTextEmbed
     ghc-options:        -Wall
                         -Wcompat
                         -Wincomplete-record-updates
                         -Wpartial-fields
                         -Wredundant-constraints
     default-language:   Haskell2010
-    default-extensions: OverloadedStrings
+    default-extensions: DuplicateRecordFields
+                        LambdaCase
                         MonoLocalBinds
                         NamedFieldPuns
+                        OverloadedRecordDot
+                        OverloadedStrings
+                        RecordWildCards
+                        TupleSections
+
 
 test-suite spec
     hs-source-dirs:     test
     main-is:            Spec.hs
     type:               exitcode-stdio-1.0
     build-depends:      base >= 4.17 && < 5
-                        , ghcitui-core
+                        , ghcitui
                         , hspec ^>= 2.11.5
     other-modules:      LocSpec
                         , UtilSpec

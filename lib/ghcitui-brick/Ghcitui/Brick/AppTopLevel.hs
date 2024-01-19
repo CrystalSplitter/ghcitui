@@ -1,4 +1,4 @@
-module AppTopLevel (AppName (..)) where
+module Ghcitui.Brick.AppTopLevel (AppName (..)) where
 
 -- | Unique identifiers for components of the App.
 data AppName

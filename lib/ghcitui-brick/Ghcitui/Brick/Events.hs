@@ -1,7 +1,7 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
-module Events (handleEvent, handleCursorPosition) where
+module Ghcitui.Brick.Events (handleEvent, handleCursorPosition) where
 
 import qualified Brick.Main as B
 import qualified Brick.Types as B
@@ -14,9 +14,9 @@ import qualified Graphics.Vty as V
 import Lens.Micro ((^.))
 import qualified Lens.Micro as Lens
 
-import qualified AppInterpState as AIS
-import AppState
-import AppTopLevel
+import qualified Ghcitui.Brick.AppInterpState as AIS
+import Ghcitui.Brick.AppState as AppState
+import Ghcitui.Brick.AppTopLevel
     ( AppName (..)
     )
 import qualified Ghcitui.Brick.SourceWindow as SourceWindow
@@ -32,11 +32,11 @@ handleEvent ev = do
     updatedSourceWindow <- SourceWindow.updateSrcWindowEnd (appState ^. AppState.sourceWindow)
     let appStateUpdated = Lens.set AppState.sourceWindow updatedSourceWindow appState
     let handler = case appStateUpdated.activeWindow of
-            ActiveCodeViewport -> handleSrcWindowEvent
-            ActiveLiveInterpreter -> handleInterpreterEvent
-            ActiveInfoWindow -> handleInfoEvent
-            ActiveDialogQuit -> handleDialogQuit
-            ActiveDialogHelp -> handleDialogHelp
+            AppState.ActiveCodeViewport -> handleSrcWindowEvent
+            AppState.ActiveLiveInterpreter -> handleInterpreterEvent
+            AppState.ActiveInfoWindow -> handleInfoEvent
+            AppState.ActiveDialogQuit -> handleDialogQuit
+            AppState.ActiveDialogHelp -> handleDialogHelp
     handler ev
 
 -- -------------------------------------------------------------------------------------------------
@@ -61,11 +61,11 @@ handleInfoEvent ev = do
                         invalidateLineCache
                     Nothing -> pure ()
             | key == V.KEsc || key == V.KChar 'C' -> do
-                B.put appState{activeWindow = ActiveCodeViewport}
+                B.put appState{activeWindow = AppState.ActiveCodeViewport}
         B.VtyEvent (V.EvKey (V.KChar 'x') [V.MCtrl]) -> do
-            B.put appState{activeWindow = ActiveLiveInterpreter}
+            B.put appState{activeWindow = AppState.ActiveLiveInterpreter}
         B.VtyEvent (V.EvKey (V.KChar '?') _) -> do
-            B.put appState{activeWindow = ActiveDialogHelp}
+            B.put appState{activeWindow = AppState.ActiveDialogHelp}
 
         -- Resizing
         B.VtyEvent (V.EvKey (V.KChar '-') []) -> do
@@ -270,9 +270,9 @@ handleSrcWindowEvent (B.VtyEvent (V.EvKey key ms))
         B.put . toggleActiveLineInterpreter =<< B.get
     | key == V.KChar 'M' = do
         appState <- B.get
-        B.put appState{activeWindow = ActiveInfoWindow}
+        B.put appState{activeWindow = AppState.ActiveInfoWindow}
         B.invalidateCacheEntry ModulesViewport
-    | key == V.KChar '?' = B.modify (\state -> state{activeWindow = ActiveDialogHelp})
+    | key == V.KChar '?' = B.modify (\state -> state{activeWindow = AppState.ActiveDialogHelp})
 handleSrcWindowEvent _ = pure ()
 
 moveSelectedLineby :: Int -> B.EventM AppName (AppState AppName) ()
@@ -298,7 +298,7 @@ scrollPage dir = do
 
 -- | Open up the quit dialog. See 'quit' for the actual quitting.
 confirmQuit :: B.EventM AppName (AppState AppName) ()
-confirmQuit = B.put . (\s -> s{activeWindow = ActiveDialogQuit}) =<< B.get
+confirmQuit = B.put . (\s -> s{activeWindow = AppState.ActiveDialogQuit}) =<< B.get
 
 invalidateCachedLine :: Int -> B.EventM AppName s ()
 invalidateCachedLine lineno = B.invalidateCacheEntry (SourceWindowLine lineno)
@@ -376,7 +376,7 @@ handleCursorPosition
     -> Maybe (B.CursorLocation AppName)
     -- ^ The chosen cursor location if any.
 handleCursorPosition s ls =
-    if s.activeWindow == ActiveLiveInterpreter
+    if s.activeWindow == AppState.ActiveLiveInterpreter
         then -- If we're in the interpreter window, show the cursor.
             B.showCursorNamed widgetName ls
         else -- No cursor
@@ -413,7 +413,7 @@ handleDialogQuit ev = do
     case ev of
         (B.VtyEvent (V.EvKey key _))
             | key == V.KChar 'q' || key == V.KEsc -> do
-                B.put $ appState{activeWindow = ActiveCodeViewport}
+                B.put $ appState{activeWindow = AppState.ActiveCodeViewport}
             | key == V.KEnter -> quit appState
         _ -> pure ()
     pure ()
@@ -422,7 +422,7 @@ handleDialogHelp :: B.BrickEvent AppName e -> B.EventM AppName (AppState AppName
 handleDialogHelp (B.VtyEvent (V.EvKey key _))
     | key == V.KChar 'q' || key == V.KEsc || key == V.KEnter = do
         appState <- B.get
-        B.put $ appState{activeWindow = ActiveCodeViewport}
+        B.put $ appState{activeWindow = AppState.ActiveCodeViewport}
     | key == V.KPageDown = B.vScrollPage scroller B.Down
     | key == V.KPageUp = B.vScrollPage scroller B.Up
     | key == V.KDown = B.vScrollBy scroller 1
