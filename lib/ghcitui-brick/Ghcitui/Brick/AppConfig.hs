@@ -1,13 +1,19 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module AppConfig (AppConfig (..), defaultConfig, loadStartupSplash, userConfigDir) where
+module Ghcitui.Brick.AppConfig
+    ( AppConfig (..)
+    , defaultConfig
+    , loadStartupSplash
+    , userConfigDir
+    )
+where
 
 import Data.Maybe (fromMaybe)
 import Data.String (IsString)
 import qualified Data.Text as T
 import System.Environment (lookupEnv)
 
-import qualified SplashTextEmbed
+import qualified Ghcitui.Brick.SplashTextEmbed as SplashTextEmbed
 
 userConfigDir :: IO FilePath
 userConfigDir = fromMaybe (error errorMsg) <$> result

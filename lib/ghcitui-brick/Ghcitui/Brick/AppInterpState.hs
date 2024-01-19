@@ -1,4 +1,6 @@
-module AppInterpState
+{-# LANGUAGE RecordWildCards #-}
+
+module Ghcitui.Brick.AppInterpState
     ( AppInterpState (_liveEditor, _viewLock, _commandBuffer, historyPos)
     , commandBuffer
     , emptyAppInterpState

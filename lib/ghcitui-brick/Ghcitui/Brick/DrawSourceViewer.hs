@@ -1,6 +1,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
-module DrawSourceViewer (drawSourceViewer) where
+module Ghcitui.Brick.DrawSourceViewer (drawSourceViewer) where
 
 import qualified Brick as B
 import qualified Brick.Widgets.Center as B
@@ -13,9 +13,9 @@ import qualified Data.Vector as Vec
 import qualified Graphics.Vty as V
 import Lens.Micro ((^.))
 
-import AppState (AppState)
-import qualified AppState
-import AppTopLevel (AppName (..))
+import Ghcitui.Brick.AppState (AppState)
+import qualified Ghcitui.Brick.AppState as AppState
+import Ghcitui.Brick.AppTopLevel (AppName (..))
 import qualified Ghcitui.Brick.SourceWindow as SourceWindow
 import qualified Ghcitui.Ghcid.Daemon as Daemon
 import qualified Ghcitui.Loc as Loc

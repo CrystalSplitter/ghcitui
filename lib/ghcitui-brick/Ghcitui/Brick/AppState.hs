@@ -1,6 +1,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
-module AppState
+module Ghcitui.Brick.AppState
     ( ActiveWindow (..)
     , AppConfig (..)
     , AppState (..)
@@ -41,9 +41,10 @@ import qualified Data.Vector as Vec
 import Lens.Micro ((^.))
 import qualified Lens.Micro as Lens
 
-import AppConfig (AppConfig (..), loadStartupSplash)
-import qualified AppInterpState as AIS
-import AppTopLevel (AppName (..))
+import Ghcitui.Brick.AppConfig (AppConfig (..))
+import qualified Ghcitui.Brick.AppConfig as AppConfig
+import qualified Ghcitui.Brick.AppInterpState as AIS
+import Ghcitui.Brick.AppTopLevel (AppName (..))
 
 import qualified Ghcitui.Brick.SourceWindow as SourceWindow
 import Ghcitui.Ghcid.Daemon (toggleBreakpointLine)
@@ -303,7 +304,7 @@ makeInitialState appConfig target cwd = do
         Daemon.run (Daemon.startup (T.unpack fullCmd) cwd' startupConfig) >>= \case
             Right iState -> pure iState
             Left er -> error (show er)
-    splashContents <- loadStartupSplash appConfig
+    splashContents <- AppConfig.loadStartupSplash appConfig
     let selectedFile' =
             case Loc.moduleFileMapAssocs (Daemon.moduleFileMap interpState) of
                 -- If we just have one file, select that.

@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module HelpText (helpText) where
+module Ghcitui.Brick.HelpText (helpText) where
 
 import Data.String (IsString)
 

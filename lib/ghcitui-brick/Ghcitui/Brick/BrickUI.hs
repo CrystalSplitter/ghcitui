@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module BrickUI
+module Ghcitui.Brick.BrickUI
     ( launchBrick
     , AppState (..)
     ) where
@@ -18,25 +18,25 @@ import qualified Graphics.Vty as V
 import Lens.Micro ((&), (^.))
 import qualified Text.Wrap as Wrap
 
-import qualified AppConfig
-import qualified AppInterpState as AIS
-import AppState
+import qualified Ghcitui.Brick.AppConfig as AppConfig
+import qualified Ghcitui.Brick.AppInterpState as AIS
+import Ghcitui.Brick.AppState
     ( ActiveWindow (..)
     , AppState (..)
     , appInterpState
     , liveEditor
     , makeInitialState
     )
-import qualified AppState
-import AppTopLevel (AppName (..))
-import qualified DrawSourceViewer
-import qualified Events
+import qualified Ghcitui.Brick.AppState as AppState
+import Ghcitui.Brick.AppTopLevel (AppName (..))
+import qualified Ghcitui.Brick.DrawSourceViewer as DrawSourceViewer
+import qualified Ghcitui.Brick.Events as Events
+import qualified Ghcitui.Brick.HelpText as HelpText
 import qualified Ghcitui.Brick.SourceWindow as SourceWindow
 import qualified Ghcitui.Ghcid.Daemon as Daemon
 import qualified Ghcitui.Loc as Loc
 import qualified Ghcitui.NameBinding as NameBinding
 import qualified Ghcitui.Util as Util
-import qualified HelpText
 
 -- | Alias for 'AppState AppName' convenience.
 type AppS = AppState AppName
