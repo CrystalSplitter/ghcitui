@@ -15,22 +15,19 @@
 
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/CrystalSplitter/ghcitui/haskell.yaml)
 
-This is an experimental front-end terminal interface for 
+This is an experimental front-end terminal interface for
 `ghci`. It provides a source viewer, keybindings, an interactive
 interpreter, and a local context viewer.
 
-![Splash Image For GHCiTUI](docs/assets/20240116_splash.png)
+![Splash Image For GHCiTUI](https://media.githubusercontent.com/media/CrystalSplitter/ghcitui/main/docs/assets/20240116_splash.png)
 
 ## Installation
 
-As this project is experimental, currently installing from
-source is the only option.
-
-See [INSTALLATION.rst](./INSTALL.rst) for details.
+You can install this project from Hackage using `cabal` or from source. See [INSTALLATION] for details.
 
 ## Basic Usage
 
-For full usage, please see the [manual](./MANUAL.rst).
+For full usage, please see the [manual].
 
 ### Starting the TUI
 
@@ -54,5 +51,9 @@ code viewport panel, you may press `<ESC>` to get to the viewport panel.
 
 ## Contributing
 
-Contributors are welcome! Please see [CONTRIBUTING.md](./CONTRIBUTING.md)
+Contributors are welcome! Please see [CONTRIBUTING].
 to see how.
+
+[INSTALLATION]: https://github.com/CrystalSplitter/ghcitui/blob/main/INSTALL.rst
+[manual]: https://github.com/CrystalSplitter/ghcitui/blob/main/MANUAL.rst
+[CONTRIBUTING]: https://github.com/CrystalSplitter/ghcitui/blob/main/CONTRIBUTING.md
