@@ -11,6 +11,19 @@ GHCiTUI is configured, built, and installed through `Cabal`_. Cabal can be
 installed through the ``ghcup`` command line tool. Familiarity with Cabal
 is not necessary to build GHCiTUI.
 
+-------------------------------------
+Installing Latest Stable From Hackage
+-------------------------------------
+
+The simplest way to install GHCiTUI is by downloading the package from Hackage:
+
+.. code-block:: shell
+
+  cabal update && cabal install ghcitui
+  # And to check it was successfully installed...
+  ghcitui --version
+  # ghcitui <VERSION>
+
 ------------------
 Getting the source
 ------------------
@@ -46,9 +59,10 @@ The GHCiTUI cabal configurations defaults to release builds in the
 
 .. code-block:: shell
 
-  cabal build  # Build library and executable (release mode)
-  cabal test  # Run tests (optional)
-  cabal install  # Per-user install (Nix-Style)
+  cd ghcitui
+  cabal build all  # Build library and executable (release mode)
+  cabal test all  # Run tests (optional)
+  cabal install exe:ghcitui  # Per-user install (Nix-Style)
 
 By default, this will place the ``ghcitui`` executable in
 ``$HOME/.cabal/bin``.
