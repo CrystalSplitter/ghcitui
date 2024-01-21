@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedRecordDot #-}
+
 module Ghcitui.Loc
     ( -- * Code locations within a file
 
@@ -28,7 +30,7 @@ module Ghcitui.Loc
 import Data.Map.Strict as Map
 import Data.Maybe (isNothing)
 import qualified Data.Text as T
-import Safe (headMay)
+import Control.Error (headMay)
 
 -- ------------------------------------------------------------------------------------------------
 
