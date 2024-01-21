@@ -39,7 +39,7 @@ drawSourceViewer s
         B.padTop (B.Pad 3)
             . B.hCenter
             $ B.withAttr (B.attrName "styled") w
-    splashWidget = maybe (B.txt "No splash file loaded.") B.txt s.splashContents
+    splashWidget = B.txt $ fromMaybe "No splash file loaded." (AppState.splashContents s)
 
 -- -------------------------------------------------------------------------------------------------
 -- Source Viewer Drawing Details
@@ -143,7 +143,7 @@ drawSourceViewer' s sourceWindow = composedTogether
         gutterInfoForLine lineno =
             GutterInfo
                 { isStoppedHere =
-                    s.interpState.pauseLoc
+                    Daemon.pauseLoc (AppState.interpState s)
                         <&> Loc.sourceRange
                         <&> (`Loc.isLineInside` lineno)
                         & fromMaybe False
@@ -162,7 +162,7 @@ drawSourceViewer' s sourceWindow = composedTogether
 
     originalLookupLineNo :: Int
     originalLookupLineNo =
-        s.interpState.pauseLoc
+        Daemon.pauseLoc (AppState.interpState s)
             >>= Loc.startLine . Loc.sourceRange
             & fromMaybe 0
 

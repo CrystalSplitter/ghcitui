@@ -1,4 +1,6 @@
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+
 
 module Ghcitui.Brick.BrickUI
     ( launchBrick
@@ -133,7 +135,7 @@ drawBaseLayer s =
             lastCmdWidget =
                 B.padRight
                     B.Max
-                    ( case headMay s.interpState.execHist of
+                    ( case headMay (Daemon.execHist (AppState.interpState s)) of
                         Just h -> B.txt h
                         _ -> B.txt " "
                     )
@@ -158,7 +160,7 @@ drawBaseLayer s =
                         $ s.interpLogs
         promptLine :: B.Widget AppName
         promptLine =
-            B.txt s.appConfig.getInterpreterPrompt
+            B.txt (AppConfig.getInterpreterPrompt . AppState.appConfig $ s)
                 <+> BE.renderEditor displayF enableCursor (s ^. liveEditor)
           where
             displayF :: [T.Text] -> B.Widget AppName

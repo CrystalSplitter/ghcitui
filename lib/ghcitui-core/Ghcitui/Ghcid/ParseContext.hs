@@ -1,4 +1,5 @@
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE QuasiQuotes #-}
 
 module Ghcitui.Ghcid.ParseContext
@@ -23,7 +24,6 @@ import Control.Error
 import Data.Array ((!))
 import Data.String.Interpolate (i)
 import qualified Data.Text as T
-import Safe (readNote)
 import Text.Regex.TDFA (MatchResult (..), (=~~))
 import qualified Text.Regex.TDFA as Regex
 
@@ -182,7 +182,7 @@ parseShowBreaks t
     parseEach mr =
         let
             -- Don't need to use readMay because regex.
-            idx = readNote "Failed to read index" $ T.unpack $ mr.mrSubs ! 1
+            eIdx = readErr "Failed to read index" $ T.unpack $ mr.mrSubs ! 1
             module_ = mr.mrSubs ! 2
             _filepath = Just $ mr.mrSubs ! 3 -- Not used currently but could be useful?
             sourceRange = parseSourceRange $ mr.mrSubs ! 4
@@ -191,12 +191,13 @@ parseShowBreaks t
                 "disabled" -> Right False
                 x -> Left ("Breakpoint neither enabled nor disabled: " <> x)
          in
-            case sourceRange of
-                _
+            case (sourceRange, eIdx) of
+                (_, Right idx)
                     | sourceRange == Loc.unknownSourceRange ->
                         Left ("Could not parse source range for breakpoint " <> showT idx)
                     | otherwise ->
                         enabled >> Right (idx, Loc.ModuleLoc module_ sourceRange)
+                (_, Left e) -> Left e
 
 -- | Parse the output of ":show modules".
 parseShowModules :: T.Text -> Either ParseError [(T.Text, FilePath)]

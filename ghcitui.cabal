@@ -21,9 +21,9 @@ description:
 bug-reports:        https://github.com/CrystalSplitter/ghcitui
 license:            BSD-3-Clause
 license-file:       LICENSE
-author:             Jordan 'CrystalSplitter' R AW
+author:             Jordan 'Crystal' R AW
 maintainer:         crystal@crystalwobsite.gay
-copyright:          Jordan R AW
+copyright:          Jordan 'Crystal' R AW
 category:           Debug
 extra-source-files: LICENSE
                     , assets/splash.txt
@@ -39,11 +39,11 @@ source-repository head
 
 executable ghcitui
     main-is:            Main.hs
-    build-depends:      base
+    build-depends:      base >= 4.16 && < 5
                         , ghcitui-brick
-                        , optparse-applicative ^>= 0.18.1.0
+                        , optparse-applicative >= 0.17 && < 0.19
                         , ghcitui
-                        , text
+                        , text >= 2.0 && < 2.2
     hs-source-dirs:     app
     other-modules:      Paths_ghcitui
     autogen-modules:    Paths_ghcitui
@@ -61,17 +61,20 @@ executable ghcitui
 
 library
     hs-source-dirs:     lib/ghcitui-core
-    build-depends:      base >= 4.17 && < 5
-                        , array ^>= 0.5.4.0
-                        , containers >= 0.6.7 && < 0.8
-                        , errors ^>= 2.3.0
-                        , ghcid ^>= 0.8.8
+    build-depends:      base >= 4.16 && < 5
+                        , array ^>= 0.5
+                        , containers >= 0.6.8 && < 0.8
+                        , errors >= 2.2 && < 2.4
+                        -- Needed to limit ghcid compat.
+                        , extra >= 1.7.14 && < 1.8
+                        , ghcid >= 0.8.8 && < 0.9
                         , regex-base ^>= 0.94.0.2
-                        , regex-tdfa ^>= 1.3.2.1
-                        , safe ^>= 0.3.19
+                        , regex-tdfa >= 1.3.2 && < 1.4
                         , string-interpolate ^>= 0.3.2.1
-                        , text ^>= 2.0.2
+                        , text >= 2.0 && < 2.2
                         , transformers ^>= 0.6.1.0
+                        -- Needed to limit string-interpolate compat.
+                        , utf8-string >= 1.0.2 && < 1.1
     exposed-modules:    Ghcitui.Ghcid.Daemon
                         , Ghcitui.Ghcid.LogConfig
                         , Ghcitui.Ghcid.ParseContext
@@ -88,25 +91,23 @@ library
     default-extensions: DuplicateRecordFields
                         MonoLocalBinds
                         NamedFieldPuns
-                        OverloadedRecordDot
                         OverloadedStrings
                         RecordWildCards
                         TupleSections
 
 library ghcitui-brick
     hs-source-dirs:     lib/ghcitui-brick
-    build-depends:      base >= 4.17 && < 5
+    build-depends:      base >= 4.15 && < 5
                         , brick >= 2.2 && < 2.4
-                        , containers >= 0.6.7 && < 0.8
-                        , errors ^>= 2.3.0
+                        , containers >= 0.6.8 && < 0.8
+                        , errors >= 2.0 && < 2.4
                         , file-embed ^>= 0.0.15
                         , ghcitui
-                        , microlens ^>= 0.4.13.1
-                        , microlens-th ^>= 0.4.3.14
-                        , safe ^>= 0.3.19
-                        , text ^>= 2.0.2
+                        , microlens >= 0.4.0.1 && < 0.5
+                        , microlens-th ^>= 0.4
+                        , text >= 2.0 && < 2.2
                         , text-zipper ^>= 0.13
-                        , vector ^>= 0.13.1.0
+                        , vector >= 0.10 && < 0.14
                         , vty >= 5.38 && < 6.1
                         , word-wrap ^>= 0.5
     exposed-modules:    Ghcitui.Brick
@@ -130,7 +131,6 @@ library ghcitui-brick
                         LambdaCase
                         MonoLocalBinds
                         NamedFieldPuns
-                        OverloadedRecordDot
                         OverloadedStrings
                         RecordWildCards
                         TupleSections
@@ -140,7 +140,7 @@ test-suite spec
     hs-source-dirs:     test
     main-is:            Spec.hs
     type:               exitcode-stdio-1.0
-    build-depends:      base >= 4.17 && < 5
+    build-depends:      base >= 4.16 && < 5
                         , ghcitui
                         , hspec ^>= 2.11.5
     other-modules:      LocSpec
