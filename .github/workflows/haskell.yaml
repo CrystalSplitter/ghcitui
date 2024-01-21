@@ -11,7 +11,6 @@ permissions:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
@@ -33,6 +32,9 @@ jobs:
           ${{ runner.os }}-build-
           ${{ runner.os }}-
 
+    - name: Cabal check
+      run: |
+        cabal check | grep 'No errors or warnings could be found'
     - name: Install dependencies
       run: |
         cabal update
@@ -54,7 +56,51 @@ jobs:
         cabal test \
           --enable-optimization=1 \
           all
-    - name: Cabal check
-      run: |
-        cabal check | grep 'No errors or warnings could be found'
 
+  build-oldest:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: haskell-actions/setup@v2
+      with:
+        ghc-version: 9.4.7
+        cabal-version: latest
+
+    - name: Cache
+      uses: actions/cache@v3
+      env:
+        cache-name: cache-cabal
+      with:
+        path: ~/.cabal
+        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project') }}
+        restore-keys: |
+          ${{ runner.os }}-build-${{ env.cache-name }}-
+          ${{ runner.os }}-build-
+          ${{ runner.os }}-
+
+    - name: Install oldest dependencies
+      run: |
+        cabal update
+        cabal \
+          --only-dependencies \
+          --enable-tests \
+          --enable-benchmarks \
+          --enable-optimization=1 \
+          --prefer-oldest \
+          build
+    - name: Build with oldest
+      run: |
+        cabal build \
+          --enable-tests \
+          --enable-benchmarks \
+          --enable-optimization=1 \
+          --prefer-oldest \
+          all
+    - name: Run tests with oldest dependencies
+      run: |
+        cabal test \
+          --enable-optimization=1 \
+          --prefer-oldest \
+          --enable-tests \
+          all
