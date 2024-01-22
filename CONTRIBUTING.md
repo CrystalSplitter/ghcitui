@@ -1,11 +1,33 @@
 # Contributing
 
+## Contributing as a User
+
 We're open to contributions! You can help by filing issues and making
 pull requsets. Comments, contributions, and any other forms of communication
 within this project must abide by the
 [Contributor Covenant Code of Conduct](#contributor-covenant-code-of-conduct).
 
-## Style
+### I Found A Bug! Where Do I Report It?
+
+That's great! Please check our [known issues] so far before filing one. If your bug isn't
+already there, please file it [here](new-bug)!
+
+### I Want a Feature! Where Do I Request It?
+
+Please file a feature request [here][new-issue]! We may
+not be able to add the feature due to low resources, but it's good to have a record of what users
+want.
+
+## Contributing as a Developer
+
+Always happy to have more collaborators on this project! Check out the [issues][known issues]
+to look for any open bugs or feature requests. If you intend to work on one, please add a comment
+to it saying you are.
+
+Also please check out the coding style, and make sure that you abide by the Contributor Convenant
+Code of Conduct.
+
+## Coding Style
 
 This project is auto-formatted currently by Fourmolu, with settings specified in
 [fourmolu.yaml](./fourmolu.yaml). This is subject to change.
@@ -47,23 +69,23 @@ diverse, inclusive, and healthy community.
 Examples of behavior that contributes to a positive environment for our
 community include:
 
-* Demonstrating empathy and kindness toward other people
-* Being respectful of differing opinions, viewpoints, and experiences
-* Giving and gracefully accepting constructive feedback
-* Accepting responsibility and apologizing to those affected by our mistakes,
+- Demonstrating empathy and kindness toward other people
+- Being respectful of differing opinions, viewpoints, and experiences
+- Giving and gracefully accepting constructive feedback
+- Accepting responsibility and apologizing to those affected by our mistakes,
   and learning from the experience
-* Focusing on what is best not just for us as individuals, but for the overall
+- Focusing on what is best not just for us as individuals, but for the overall
   community
 
 Examples of unacceptable behavior include:
 
-* The use of sexualized language or imagery, and sexual attention or advances of
+- The use of sexualized language or imagery, and sexual attention or advances of
   any kind
-* Trolling, insulting or derogatory comments, and personal or political attacks
-* Public or private harassment
-* Publishing others' private information, such as a physical or email address,
+- Trolling, insulting or derogatory comments, and personal or political attacks
+- Public or private harassment
+- Publishing others' private information, such as a physical or email address,
   without their explicit permission
-* Other conduct which could reasonably be considered inappropriate in a
+- Other conduct which could reasonably be considered inappropriate in a
   professional setting
 
 ## Enforcement Responsibilities
@@ -155,6 +177,9 @@ For answers to common questions about this code of conduct, see the FAQ at
 [https://www.contributor-covenant.org/faq][FAQ]. Translations are available at
 [https://www.contributor-covenant.org/translations][translations].
 
+[known issues]: https://github.com/CrystalSplitter/ghcitui/issues
+[new-bug]: https://github.com/CrystalSplitter/ghcitui/issues/new?assignees=&labels=bug&projects=&template=bug_report.md&title=%5BBug+Placeholder+Name%5D
+[new-issue]: https://github.com/CrystalSplitter/ghcitui/issues/new
 [homepage]: https://www.contributor-covenant.org
 [v2.1]: https://www.contributor-covenant.org/version/2/1/code_of_conduct.html
 [Mozilla CoC]: https://github.com/mozilla/diversity
