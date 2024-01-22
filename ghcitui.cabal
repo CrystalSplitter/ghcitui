@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               ghcitui
-version:            0.0.1.0
+version:            0.1.0.0
 synopsis:           A Terminal User Interface (TUI) for GHCi
 
 description:
@@ -18,13 +18,16 @@ description:
   .
   * An GHCi session in the current context.
 
-bug-reports:        https://github.com/CrystalSplitter/ghcitui
-license:            BSD-3-Clause
-license-file:       LICENSE
 author:             Jordan 'Crystal' R AW
-maintainer:         crystal@crystalwobsite.gay
-copyright:          Jordan 'Crystal' R AW
+bug-reports:        https://github.com/CrystalSplitter/ghcitui/issues
 category:           Debug
+copyright:          Jordan 'Crystal' R AW
+homepage:           https://github.com/CrystalSplitter/ghcitui
+license-file:       LICENSE
+license:            BSD-3-Clause
+maintainer:         crystal@crystalwobsite.gay
+tested-with:        GHC == 9.2.8, GHC == 9.4.8, GHC == 9.8.1
+
 extra-source-files: LICENSE
                     , assets/splash.txt
                     , gen/MANUAL.txt
