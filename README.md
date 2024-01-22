@@ -51,8 +51,7 @@ code viewport panel, you may press `<ESC>` to get to the viewport panel.
 
 ## Contributing
 
-Contributors are welcome! Please see [CONTRIBUTING].
-to see how.
+Contributors are welcome! Please see [CONTRIBUTING] to see how.
 
 [INSTALLATION]: https://github.com/CrystalSplitter/ghcitui/blob/main/INSTALL.rst
 [manual]: https://github.com/CrystalSplitter/ghcitui/blob/main/MANUAL.rst

@@ -1,28 +1,31 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Found a bug? Let us know!
 title: "[Bug Placeholder Name]"
 labels: bug
-assignees: ''
-
+assignees: ""
 ---
 
 ## Description
 
-Any general details about the bug should go here.
+_Any general details about the bug should go here._
 
 ### To Reproduce
-Steps to reproduce the behavior, if available.
+
+_Steps to reproduce the behavior, if available._
 
 ### Expected behaviour
-(Optional) What do you expect to happen instead?
+
+_(Optional) What do you expect to happen instead?_
 
 ### Screenshots
-(Optional) If applicable, add screenshots! This is particularly useful for graphical glitches.
 
-### Environment:
-Report any useful system details here
+_(Optional) If applicable, add screenshots! This is particularly useful for graphical glitches._
 
- - OS [e.g. NixOS, Debian, Ubuntu, Windows]
- - GHCiTUI Version [e.g. 0.1.0.0]
- - If building from source, `cabal freeze` output.
+### Environment
+
+_Report any useful system details here._
+
+- OS: _[e.g. NixOS, Debian, Ubuntu, Windows]_
+- GHCiTUI Version: _[e.g. 0.1.0.0]_
+- _If building from source,_ `cabal freeze` _output._
