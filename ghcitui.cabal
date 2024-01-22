@@ -47,7 +47,7 @@ executable ghcitui
                         , ghcitui-brick
                         , optparse-applicative >= 0.17 && < 0.19
                         , ghcitui
-                        , text >= 2.0 && < 2.2
+                        , text
     hs-source-dirs:     app
     other-modules:      Paths_ghcitui
     autogen-modules:    Paths_ghcitui
@@ -101,18 +101,18 @@ library
 
 library ghcitui-brick
     hs-source-dirs:     lib/ghcitui-brick
-    build-depends:      base >= 4.15 && < 5
+    build-depends:      base >= 4.16 && < 5
                         , brick >= 2.2 && < 2.4
-                        , containers >= 0.6.8 && < 0.8
-                        , errors >= 2.0 && < 2.4
+                        , containers
+                        , errors
                         , file-embed ^>= 0.0.15
                         , ghcitui
                         , microlens >= 0.4.0.1 && < 0.5
                         , microlens-th ^>= 0.4
-                        , text >= 2.0 && < 2.2
+                        , text
                         , text-zipper ^>= 0.13
                         , vector >= 0.10 && < 0.14
-                        , vty >= 5.38 && < 6.1
+                        , vty >= 5.38 && < 6.2
                         , word-wrap ^>= 0.5
     exposed-modules:    Ghcitui.Brick
     other-modules:      Ghcitui.Brick.AppConfig
