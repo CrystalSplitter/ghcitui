@@ -26,6 +26,7 @@ homepage:           https://github.com/CrystalSplitter/ghcitui
 license-file:       LICENSE
 license:            BSD-3-Clause
 maintainer:         crystal@crystalwobsite.gay
+stability:          experimental
 tested-with:        GHC == 9.2.8, GHC == 9.4.8, GHC == 9.8.1
 
 extra-source-files: LICENSE
