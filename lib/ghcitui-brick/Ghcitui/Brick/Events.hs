@@ -9,6 +9,7 @@ import qualified Brick.Types as B
 import qualified Brick.Widgets.Edit as BE
 import Control.Error (atDef, fromMaybe, lastDef, note)
 import Control.Monad.IO.Class (MonadIO (..))
+import Data.List (foldl')
 import qualified Data.Text as T
 import qualified Data.Text.Zipper as T
 import qualified Graphics.Vty as V
@@ -89,39 +90,57 @@ handleInterpreterEvent ev = do
     case ev of
         B.VtyEvent (V.EvKey V.KEnter []) -> do
             let cmd = T.strip (T.unlines (editorContents appState))
-
             -- Actually run the command.
             (newAppState1, output) <- runDaemon2 (Daemon.execCleaned cmd) appState
-
             let newEditor =
                     BE.applyEdit
                         (T.killToEOF . T.gotoBOF)
                         (appState ^. liveEditor)
-            -- TODO: Should be configurable?
-            let interpreterLogLimit = 1000
-            let formattedWithPrompt = appState.appConfig.getInterpreterPrompt <> cmd
-            let combinedLogs = reverse output <> (formattedWithPrompt : interpLogs appState)
             let newAppState2 =
                     writeDebugLog ("Handled Enter: Ran '" <> cmd <> "'")
                         . Lens.set (appInterpState . AIS.viewLock) True
-                        . Lens.over appInterpState (AIS.pushHistory (editorContents appState))
-                        $ newAppState1
-                            { interpLogs =
-                                take interpreterLogLimit combinedLogs
-                            }
+                        . Lens.over appInterpState (AIS.pushHistory [cmd])
+                        $ appendToLogs output cmd newAppState1
             let appStateFinalIO = updateSourceMap (Lens.set liveEditor newEditor newAppState2)
             B.put =<< liftIO appStateFinalIO
             -- Invalidate the entire render state of the application
             -- because we don't know what's actually changed here now.
             B.invalidateCache
         B.VtyEvent (V.EvKey (V.KChar '\t') []) -> do
-            -- Tab completion?
-            let cmd = T.strip (T.unlines (editorContents appState))
-            (newAppState1, _output) <-
-                runDaemon2
-                    (Daemon.execCleaned (":complete " <> cmd))
-                    appState
-            B.put newAppState1
+            -- We want to preserve spaces, but not trailing newlines.
+            let cmd = T.dropWhileEnd ('\n' ==) . T.unlines . editorContents $ appState
+            -- Tab completion expects input to be 'show'n in quotes.
+            -- There's probably a better way of doing this!
+            (newAppState, (prefix, completions)) <- runDaemon2 (Daemon.tabComplete cmd) appState
+            let maxCompletionLen = maximum $ T.length <$> completions
+            let columnPadding = 1
+            extent <-
+                B.lookupExtent LiveInterpreterViewport >>= \case
+                    Just e -> pure e
+                    Nothing -> error "Could not find extent of LiveInterpreterViewport"
+            let interpWidth = fst . B.extentSize $ extent
+            let completionColWidth = min (interpWidth - 2) maxCompletionLen + columnPadding
+            let numCols = interpWidth `div` completionColWidth
+            let updateCompletions cs s = case cs of
+                    -- Only one completion, just replace the entire buffer with it.
+                    [c] -> replaceCommandBuffer (prefix <> c <> " ") s
+                    -- No completions. Just go to a new prompt.
+                    [] -> appendToLogs [] cmd s
+                    -- Replace the buffer with the longest possible prefix among options, and
+                    -- print the remaining.
+                    _ ->
+                        replaceCommandBuffer (prefix <> commonPrefixes cs)
+                            . appendToLogs (reflowText numCols completionColWidth cs) cmd
+                            $ s
+            B.put
+                . writeDebugLog
+                    ( "Handled Tab, Prefix was: '"
+                        <> cmd
+                        <> "' Completions were: "
+                        <> showT completions
+                    )
+                . updateCompletions completions
+                $ newAppState
         B.VtyEvent (V.EvKey (V.KChar 'x') [V.MCtrl]) ->
             -- Toggle out of the interpreter.
             leaveInterpreter
@@ -131,6 +150,8 @@ handleInterpreterEvent ev = do
                     B.put (Lens.set (appInterpState . AIS.viewLock) True appState)
                 else -- Also toggle out of the interpreter.
                     leaveInterpreter
+
+        -- Selecting previous commands.
         B.VtyEvent (V.EvKey V.KUp _) -> do
             let maybeStoreBuffer s =
                     if not (AIS.isScanningHist (getAis s))
@@ -162,6 +183,8 @@ handleInterpreterEvent ev = do
                         . Lens.over appInterpState AIS.futHistoryPos -- Go forward in time.
                         $ appState
             B.put appState'
+
+        -- Scrolling back through the logs.
         B.VtyEvent (V.EvKey V.KPageDown _) ->
             B.vScrollPage (B.viewportScroll LiveInterpreterViewport) B.Down
         B.VtyEvent (V.EvKey V.KPageUp _) -> do
@@ -203,6 +226,59 @@ handleInterpreterEvent ev = do
     replaceCommandBufferWithHist s@AppState{_appInterpState} = replaceCommandBuffer cmd s
       where
         cmd = T.unlines . getCommandAtHist (AIS.historyPos _appInterpState) $ s
+
+appendToLogs
+    :: [T.Text]
+    -- ^ Logs between commands.
+    -> T.Text
+    -- ^ The command sent to produce the logs.
+    -> AppState n
+    -- ^ State to update.
+    -> AppState n
+    -- ^ Updated state.
+appendToLogs logs promptEntry state = state{interpLogs = take interpreterLogLimit combinedLogs}
+  where
+    combinedLogs = reverse logs <> (formattedWithPrompt : interpLogs state)
+    formattedWithPrompt = getInterpreterPrompt (appConfig state) <> promptEntry
+    -- TODO: Should be configurable?
+    interpreterLogLimit = 1000
+
+-- | Reflow entries of text into columns.
+reflowText
+    :: Int
+    -- ^ Num columns
+    -> Int
+    -- ^ Column width
+    -> [T.Text]
+    -- ^ Text entries to reflow
+    -> [T.Text]
+    -- ^ Reflowed lines.
+reflowText numCols colWidth = go
+  where
+    go :: [T.Text] -> [T.Text]
+    go [] = []
+    go entries' = makeLine toMakeLine : go rest
+      where
+        (toMakeLine, rest) = splitAt numCols entries'
+    maxTextLen = colWidth - 1
+    makeLine xs = T.concat (T.justifyLeft colWidth ' ' . shortenText maxTextLen <$> xs)
+
+shortenText :: Int -> T.Text -> T.Text
+shortenText maxLen text
+    | len <= maxLen = text
+    | otherwise = T.take (maxLen - 1) text <> "…"
+  where
+    len = T.length text
+
+-- | Return the shared prefix among all the input Texts.
+commonPrefixes :: [T.Text] -> T.Text
+commonPrefixes [] = ""
+commonPrefixes (t : ts) = foldl' folder t ts
+  where
+    folder :: T.Text -> T.Text -> T.Text
+    folder acc t' = case T.commonPrefixes acc t' of
+        Just (p, _, _) -> p
+        _ -> ""
 
 -- | Replace the command buffer with the given strings of Text.
 replaceCommandBuffer

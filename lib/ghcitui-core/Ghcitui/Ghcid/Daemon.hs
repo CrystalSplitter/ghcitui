@@ -45,6 +45,9 @@ module Ghcitui.Ghcid.Daemon
     , trace
     , history
 
+      -- * Tab completion
+    , tabComplete
+
       -- * Misc
     , isExecuting
     , BreakpointArg (..)
@@ -65,6 +68,7 @@ import qualified System.IO as IO
 
 import Ghcitui.Ghcid.LogConfig (LogLevel (..), LogOutput (..))
 import qualified Ghcitui.Ghcid.ParseContext as ParseContext
+import qualified Ghcitui.Ghcid.ParseTabCompletions as ParseTabCompletions
 import Ghcitui.Ghcid.StartupConfig (StartupConfig)
 import qualified Ghcitui.Ghcid.StartupConfig as StartupConfig
 import qualified Ghcitui.Loc as Loc
@@ -318,6 +322,31 @@ trace = execMuted ":trace"
 load :: (Monoid a) => FilePath -> InterpState a -> DaemonIO (InterpState a)
 load filepath = execMuted (T.pack $ ":load " <> filepath)
 
+{- | Return tab completions for a given prefix.
+     Analog to @:complete repl "<prefix>"@
+     See https://downloads.haskell.org/ghc/latest/docs/users_guide/ghci.html#ghci-cmd-:complete
+-}
+tabComplete
+    :: (Monoid a)
+    => T.Text
+    -- ^ Text (prefix) to return autocompletions of. Does not need to be escaped.
+    -> InterpState a
+    -- ^ Interpreter state to use.
+    -> DaemonIO (InterpState a, (T.Text, [T.Text]))
+    -- ^ Resulting state, the prefix, and autocompletions.
+tabComplete providedPrefix state = do
+    -- Tab completion expects input to be 'show'n in quotes.
+    -- There's probably a better way of doing this!
+    let escapedPrefix = Util.showT providedPrefix
+    let cmd = ":complete repl " <> escapedPrefix
+    (newState, outputLines) <- execCleaned cmd state
+    (prefix, completions) <- case ParseTabCompletions.parseCompletionsWithHeader outputLines of
+        Right c -> pure c
+        Left (ParseTabCompletions.ParseError er) -> throwE (GenericError er)
+    pure (newState, (prefix, completions))
+
+-- -------------------------------------------------------------------------------------------------
+
 {- | Execute an arbitrary command, as if it was directly written in GHCi.
      It is unlikely you want to call this directly, and instead want to call
      one of the wrapped functions or 'execMuted' or 'execCleaned'.
@@ -353,6 +382,10 @@ execCleaned cmd state = do
   where
     cleaner (s, ls) = (s, T.lines (ParseContext.cleanResponse ls))
 
+-- ------------------------------------------------------------------------------------------------
+-- Breakpoint handling
+-- ------------------------------------------------------------------------------------------------
+
 -- | Location info passed to breakpoint functions.
 data BreakpointArg
     = -- | Location in the current file.
@@ -382,7 +415,9 @@ toggleBreakpointLine loc state
             ModLoc ml -> handleModLoc ml
 
     invalidLoc :: Loc.ModuleLoc -> Either DaemonError a
-    invalidLoc ml = Left $ BreakpointError [i|Cannot locate breakpoint position '#{ml}' in module without source|]
+    invalidLoc ml =
+        Left $
+            BreakpointError [i|Cannot locate breakpoint position '#{ml}' in module without source|]
 
 -- | Set a breakpoint at a given line.
 setBreakpointLine :: (Monoid a) => BreakpointArg -> InterpState a -> DaemonIO (InterpState a)

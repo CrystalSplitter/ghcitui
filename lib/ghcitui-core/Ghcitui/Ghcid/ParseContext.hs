@@ -27,14 +27,13 @@ import qualified Data.Text as T
 import Text.Regex.TDFA (MatchResult (..), (=~~))
 import qualified Text.Regex.TDFA as Regex
 
+import Ghcitui.Ghcid.ParseError (ParseError (..)) -- Re-export.
 import qualified Ghcitui.Loc as Loc
 import Ghcitui.NameBinding
 import Ghcitui.Util
 
 ghcidPrompt :: T.Text
 ghcidPrompt = "#~GHCID-START~#"
-
-newtype ParseError = ParseError T.Text deriving (Show, Eq)
 
 -- | Output record datatype for 'parseContext'.
 data ParseContextOut = ParseContextOut
