@@ -7,8 +7,10 @@ module Ghcitui.Brick.Events (handleEvent, handleCursorPosition) where
 import qualified Brick.Main as B
 import qualified Brick.Types as B
 import qualified Brick.Widgets.Edit as BE
+import Control.Category ((>>>))
 import Control.Error (atDef, fromMaybe, lastDef, note)
 import Control.Monad.IO.Class (MonadIO (..))
+import Data.List (foldl1')
 import qualified Data.Text as T
 import qualified Data.Text.Zipper as T
 import qualified Graphics.Vty as V
@@ -115,13 +117,53 @@ handleInterpreterEvent ev = do
             -- because we don't know what's actually changed here now.
             B.invalidateCache
         B.VtyEvent (V.EvKey (V.KChar '\t') []) -> do
-            -- Tab completion?
-            let cmd = T.strip (T.unlines (editorContents appState))
-            (newAppState1, _output) <-
+            let input = T.strip (T.unlines (editorContents appState))
+                -- Tab completion expects input to be 'show'n as a String
+                -- there's probably a better way of doing this!
+                inputShown = T.pack $ show $ T.unpack input
+                cmd = ":complete repl " <> inputShown
+            (newAppState1, output) <-
                 runDaemon2
-                    (Daemon.execCleaned (":complete " <> cmd))
+                    (Daemon.execCleaned cmd)
                     appState
-            B.put newAppState1
+            let (completions, beforeText) = case output of
+                    (context : completions')
+                        | (toPrint : _total : rest) <- T.splitOn " " context ->
+                            let toPrint' = read (T.unpack toPrint) :: Int
+                             in ( T.pack . read . T.unpack <$> take toPrint' completions'
+                                , -- need to restore spaces which were split apart
+                                  T.pack . read . T.unpack $ T.intercalate " " rest
+                                )
+                    _ ->
+                        error $
+                            "Unexpected :complete result from GHCi: " ++ show output
+
+                formattedWithPrompt = appState.appConfig.getInterpreterPrompt <> input
+                combinedLogs =
+                    -- only show completions if there is more than one
+                    [T.intercalate " " completions | length completions > 1]
+                        <> (formattedWithPrompt : interpLogs appState)
+                interpreterLogLimit = 1000
+
+                commonPrefix =
+                    if null completions
+                        then ""
+                        else foldl1' commonPrefixes completions
+                newEditor =
+                    BE.applyEdit
+                        ( T.gotoBOF
+                            >>> T.killToEOF
+                            >>> T.insertMany beforeText
+                            >>> T.insertMany commonPrefix
+                        )
+                        (appState ^. liveEditor)
+            B.put
+                . writeDebugLog ("Handled Tab: Ran '" <> cmd <> "'")
+                . Lens.set liveEditor newEditor
+                $ newAppState1
+                    { interpLogs =
+                        take interpreterLogLimit combinedLogs
+                    }
         B.VtyEvent (V.EvKey (V.KChar 'x') [V.MCtrl]) ->
             -- Toggle out of the interpreter.
             leaveInterpreter
@@ -203,6 +245,12 @@ handleInterpreterEvent ev = do
     replaceCommandBufferWithHist s@AppState{_appInterpState} = replaceCommandBuffer cmd s
       where
         cmd = T.unlines . getCommandAtHist (AIS.historyPos _appInterpState) $ s
+
+    commonPrefixes :: T.Text -> T.Text -> T.Text
+    commonPrefixes t u =
+        case T.commonPrefixes t u of
+            Just (p, _, _) -> p
+            Nothing -> ""
 
 -- | Replace the command buffer with the given strings of Text.
 replaceCommandBuffer
