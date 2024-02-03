@@ -73,7 +73,7 @@ import Ghcitui.Util (showT)
 import qualified Ghcitui.Util as Util
 
 data InterpState a = InterpState
-    { _ghci :: Ghcid.Ghci
+    { _ghci :: !Ghcid.Ghci
     -- ^ GHCiD handle.
     , func :: !(Maybe T.Text)
     -- ^ Current pause position function name.
@@ -81,11 +81,11 @@ data InterpState a = InterpState
     -- ^ Current pause position.
     , moduleFileMap :: !Loc.ModuleFileMap
     -- ^ Mapping between modules and their filepaths.
-    , stack :: [T.Text]
+    , stack :: ![T.Text]
     -- ^ Program stack (only available during tracing).
-    , breakpoints :: [(Int, Loc.ModuleLoc)]
+    , breakpoints :: ![(Int, Loc.ModuleLoc)]
     -- ^ Currently set breakpoint locations.
-    , bindings :: Either DaemonError [NameBinding.NameBinding T.Text]
+    , bindings :: !(Either DaemonError [NameBinding.NameBinding T.Text])
     -- ^ Current context value bindings.
     , status :: !(Either T.Text a)
     -- ^ IDK? I had an idea here at one point.
@@ -108,7 +108,7 @@ instance Show (InterpState a) where
                         srcRngFmt =
                             [i|{sourceRange=(#{startLine},#{startCol})-(#{endLine},#{endCol})}|]
                      in [i|{func=#{func'}, filepath=#{filepath'}, #{srcRngFmt}}|]
-                _ -> "<unknown pause location>" :: String
+                Nothing -> "<unknown pause location>" :: String
          in msg
 
 {- | Create an empty/starting interpreter state.
@@ -183,7 +183,7 @@ startupStreamCallback stream msg = do
 -- | Shut down the GHCi Daemon.
 quit :: InterpState a -> IO (InterpState a)
 quit state = do
-    Ghcid.quit (state._ghci)
+    Ghcid.quit state._ghci
     pure state
 
 -- | Update the interpreter state. Wrapper around other updaters.
@@ -358,7 +358,7 @@ data BreakpointArg
     = -- | Location in the current file.
       LocalLine !Int
     | -- | Location in a module.
-      ModLoc Loc.ModuleLoc
+      ModLoc !Loc.ModuleLoc
     deriving (Show, Eq, Ord)
 
 -- | Toggle a breakpoint (disable/enable) at a given location.
@@ -516,11 +516,11 @@ logHelper outputLoc prefix msg = do
 -- Misc
 
 data DaemonError
-    = GenericError T.Text
-    | UpdateBindingError T.Text
-    | UpdateBreakListError T.Text
-    | BreakpointError T.Text
-    | UpdateContextError T.Text
+    = GenericError !T.Text
+    | UpdateBindingError !T.Text
+    | UpdateBreakListError !T.Text
+    | BreakpointError !T.Text
+    | UpdateContextError !T.Text
     deriving (Eq, Show)
 
 {- | An IO operation that can fail into a DaemonError.
