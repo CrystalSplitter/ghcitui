@@ -82,6 +82,8 @@ library
     exposed-modules:    Ghcitui.Ghcid.Daemon
                         , Ghcitui.Ghcid.LogConfig
                         , Ghcitui.Ghcid.ParseContext
+                        , Ghcitui.Ghcid.ParseError
+                        , Ghcitui.Ghcid.ParseTabCompletions
                         , Ghcitui.Loc
                         , Ghcitui.NameBinding
                         , Ghcitui.Util
