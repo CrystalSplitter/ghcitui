@@ -27,10 +27,10 @@ module Ghcitui.Loc
     , getModuleOfPath
     ) where
 
+import Control.Error (headMay)
 import Data.Map.Strict as Map
 import Data.Maybe (isNothing)
 import qualified Data.Text as T
-import Control.Error (headMay)
 
 -- ------------------------------------------------------------------------------------------------
 

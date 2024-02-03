@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-
 module Ghcitui.Brick.BrickUI
     ( launchBrick
     , AppState (..)
