@@ -220,9 +220,13 @@ updateSourceMapWithFilepath s filepath
                         )
                         s
             Right contents -> do
-                let newSourceMap = Map.insert filepath contents s.sourceMap
+                let newSourceMap = Map.insert filepath (stripCREndings contents) s.sourceMap
                 let logMsg = "updated source map with " <> T.pack filepath
                 pure (writeDebugLog logMsg s{sourceMap = newSourceMap})
+
+-- | Remove CR line endings.
+stripCREndings :: T.Text -> T.Text
+stripCREndings = T.replace "\r" ""
 
 listAvailableSources :: AppState n -> [(T.Text, FilePath)]
 listAvailableSources = Loc.moduleFileMapAssocs . Daemon.moduleFileMap . interpState
