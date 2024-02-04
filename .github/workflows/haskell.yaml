@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "develop" ]
 
 permissions:
   contents: read
@@ -14,14 +14,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - uses: haskell-actions/setup@v2
+    - uses: actions/checkout@v4.1.1
+    - uses: haskell-actions/setup@v2.6.1
       with:
-        ghc-version: 9.4.7
+        ghc-version: 9.8.1
         cabal-version: latest
 
     - name: Cache
-      uses: actions/cache@v3
+      uses: actions/cache@v4.0.0
       env:
         cache-name: cache-cabal
       with:
@@ -61,16 +61,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - uses: haskell-actions/setup@v2
+    - uses: actions/checkout@v4.1.1
+    - uses: haskell-actions/setup@v2.6.1
       with:
         ghc-version: 9.4.7
         cabal-version: latest
 
     - name: Cache
-      uses: actions/cache@v3
+      uses: actions/cache@v4.0.0
       env:
-        cache-name: cache-cabal
+        cache-name: cache-cabal-oldest
       with:
         path: ~/.cabal
         key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project') }}
