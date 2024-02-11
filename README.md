@@ -13,7 +13,7 @@
      (' _ '                    \/_/   \/_____/  \/_/
 ```
 
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/CrystalSplitter/ghcitui/haskell.yaml)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/CrystalSplitter/ghcitui/haskell.yaml) ![Hackage Version](https://img.shields.io/hackage/v/ghcitui)
 
 This is an experimental front-end terminal interface for
 `ghci`. It provides a source viewer, keybindings, an interactive
