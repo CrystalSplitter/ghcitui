@@ -147,6 +147,7 @@ Live Interpreter (REPL)
 - ``+``, ``-`` while in scrolling mode: Increase/decrease the live
   panel size.
 - ``<Enter>``: Enter a command to the REPL.
+- ``<Tab>``: Autocomplete (yes there's basic autocomplete support)
 
 *******
 Modules

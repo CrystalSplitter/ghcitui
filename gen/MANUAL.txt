@@ -129,6 +129,8 @@ KEYBINDINGS
 
        • <Enter>: Enter a command to the REPL.
 
+       • <Tab>: Autocomplete (yes there's basic autocomplete support)
+
    Modules
        • ?: Display help inside GHCiTUI.
 
