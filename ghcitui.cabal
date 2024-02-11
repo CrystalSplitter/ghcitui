@@ -114,7 +114,7 @@ library ghcitui-brick
                         , text
                         , text-zipper ^>= 0.13
                         , vector >= 0.10 && < 0.14
-                        , vty >= 5.38 && < 6.2
+                        , vty >= 5.38 && < 6.3
                         , word-wrap ^>= 0.5
     exposed-modules:    Ghcitui.Brick
     other-modules:      Ghcitui.Brick.AppConfig
