@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               ghcitui
-version:            0.1.0.0
+version:            0.2.0.0
 synopsis:           A Terminal User Interface (TUI) for GHCi
 
 description:
@@ -27,7 +27,10 @@ license-file:       LICENSE
 license:            BSD-3-Clause
 maintainer:         crystal@crystalwobsite.gay
 stability:          experimental
-tested-with:        GHC == 9.2.8, GHC == 9.4.8, GHC == 9.8.1
+tested-with:        GHC == 9.2.8
+                    ||==9.4.7
+                    ||==9.4.8
+                    ||==9.8.1
 
 extra-source-files: LICENSE
                     , assets/splash.txt
