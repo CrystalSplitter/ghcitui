@@ -31,15 +31,24 @@ drawSourceViewer s
     currentlyRunning = Daemon.isExecuting (AppState.interpState s)
     srcWindow = s ^. AppState.sourceWindow
     notRunningWidget =
-        padWidget splashWidget
-            <=> padWidget (B.txt "Nothing executing. Maybe run something?")
+        withStyle
+            ( padTop (B.hCenter splashWidget)
+                <=> padTop
+                    ( B.hCenter (B.txt "Nothing executing. Maybe run something?")
+                        <=> B.hCenter (B.txt "Press '?' for help.")
+                    )
+            )
     noSourceWidget =
-        padWidget splashWidget <=> padWidget (B.txt "Can't display. Source not found.")
-    padWidget w =
-        B.padTop (B.Pad 3)
-            . B.hCenter
-            $ B.withAttr (B.attrName "styled") w
-    splashWidget = B.txt $ fromMaybe "No splash file loaded." (AppState.splashContents s)
+        withStyle (B.hCenter splashWidget <=> padTop (B.txt "Can't display. Source not found."))
+    splashWidget =
+        withStyle (B.txt (fromMaybe "No splash file loaded." (AppState.splashContents s)))
+
+    -- Utils
+    padTop :: B.Widget n -> B.Widget n
+    padTop = B.padTop (B.Pad 3)
+
+    withStyle :: B.Widget n -> B.Widget n
+    withStyle = B.withAttr (B.attrName "styled")
 
 -- -------------------------------------------------------------------------------------------------
 -- Source Viewer Drawing Details
