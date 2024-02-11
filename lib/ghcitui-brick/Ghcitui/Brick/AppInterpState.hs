@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Ghcitui.Brick.AppInterpState
@@ -18,14 +17,21 @@ import qualified Brick.Widgets.Edit as BE
 import qualified Data.Text as T
 import Lens.Micro as Lens
 
+{- | The state of the Live Interpreter (GHCi) window. The one at the bottom of
+     the TUI normally. It's solely visual TUI state. It holds bits of Brick state,
+     and only Brick-related things. For example, the last things you ran in the terminal,
+     whether you're scrolling the history, and what's the current command buffer.
+-}
 data AppInterpState s n = AppInterpState
-    { _liveEditor :: BE.Editor s n
+    { _liveEditor :: !(BE.Editor s n)
+    -- ^ Brick editor for the actual interactive prompt.
     , _viewLock :: !Bool
     -- ^ Whether we're locked to the bottom of the interpreter (True) window or not (False).
-    , _commandBuffer :: [s]
+    , _commandBuffer :: ![s]
     -- ^ The text currently typed into the editor, but not yet executed or in the history.
-    , _cmdHistory :: [[s]]
+    , _cmdHistory :: ![[s]]
     , historyPos :: !Int
+    -- ^ Current position
     }
 
 -- | Lens accessor for the editor. See '_liveEditor'.
@@ -40,7 +46,9 @@ viewLock = Lens.lens _viewLock (\ais x -> ais{_viewLock = x})
 commandBuffer :: Lens.Lens' (AppInterpState s n) [s]
 commandBuffer = Lens.lens _commandBuffer (\ais x -> ais{_commandBuffer = x})
 
--- | Return the interpreter command history.
+{- | Return the interpreter command history (what you've typed in the past.)
+     Sorted most recent first, oldest last.
+-}
 cmdHistory :: AppInterpState s n -> [[s]]
 cmdHistory = _cmdHistory
 
