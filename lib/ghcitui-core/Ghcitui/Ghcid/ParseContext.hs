@@ -41,9 +41,9 @@ data ParseContextOut = ParseContextOut
     , filepath :: !FilePath
     , pcSourceRange :: !Loc.SourceRange
     }
-    deriving (Show)
+    deriving (Eq, Show)
 
-data ParseContextReturn = PCError ParseError | PCNoContext | PCContext ParseContextOut
+data ParseContextReturn = PCError ParseError | PCNoContext | PCContext ParseContextOut deriving (Eq, Show)
 
 -- | Parse the output from ":show context" for the interpreter state.
 parseContext :: T.Text -> ParseContextReturn
@@ -58,7 +58,7 @@ parseContext contextText =
             let contextTextLines = T.lines contextText
              in if all (`elem` ["", "()"]) contextTextLines
                     then PCNoContext
-                    else PCError (ParseError [i| parsing context: #{e}|])
+                    else PCError (ParseError [i|parsing context: #{e}|])
 
 parseFile :: T.Text -> Either ParseError FilePath
 parseFile s
@@ -128,15 +128,15 @@ eInfoLine :: T.Text -> Either ParseError (T.Text, T.Text)
 eInfoLine "" = Left $ ParseError "Could not find info line in empty string"
 eInfoLine contextText =
     note
-        (ParseError $ "Could not match info line: '" <> showT splits <> "'")
-        stopLine
+        (ParseError [i|Could not match info line: '#{showT splits}'|])
+        mStopLine
   where
     splits = splitBy ghcidPrompt contextText
-    stopLineMR = foldr (\n acc -> acc <|> stopReg n) Nothing splits
-    stopLine = (\mr -> (mrSubs mr ! 1, mrSubs mr ! 2)) <$> stopLineMR
+    mStopLine = (\mr -> (mrSubs mr ! 1, mrSubs mr ! 2)) <$> mStopLineMatchRes
+    mStopLineMatchRes = foldr (\n acc -> acc <|> stopReg n) Nothing splits
     -- Match on the "Stopped in ..." line.
     stopReg :: T.Text -> Maybe (MatchResult T.Text)
-    stopReg s = s =~~ ("^[ \t]*Stopped in ([[:alnum:]_.()]+),(.*)" :: T.Text)
+    stopReg s = s =~~ ("^[ \t]*Stopped in ([[:alnum:]_.()]+'*),(.*)" :: T.Text)
 
 parseBreakResponse :: T.Text -> Either T.Text [Loc.ModuleLoc]
 parseBreakResponse t
