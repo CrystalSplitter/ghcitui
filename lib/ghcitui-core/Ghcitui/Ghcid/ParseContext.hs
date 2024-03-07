@@ -68,9 +68,9 @@ parseFile s
 -- | Parse a source range structure into a SourceRange object.
 parseSourceRange :: T.Text -> Loc.SourceRange
 parseSourceRange s
-    -- Matches (12,34)-(56,78)
+    -- Matches (12,34)-(56,78) ... (line 12, column 34 to line 56, column 78)
     | Just mr <- matches "\\(([0-9]+),([0-9]+)\\)-\\(([0-9]+),([0-9]+)\\)" = fullRange mr
-    -- Matches 12:34-56
+    -- Matches 12:34-56 ... (line 12, columns 34 to 56)
     | Just mr <- matches "([0-9]+):([0-9]+)-([0-9]+)" = lineColRange mr
     -- Matches 12:34
     | Just mr <- matches "([0-9]+):([0-9]+)" = lineColSingle mr
@@ -136,7 +136,7 @@ eInfoLine contextText =
     mStopLineMatchRes = foldr (\n acc -> acc <|> stopReg n) Nothing splits
     -- Match on the "Stopped in ..." line.
     stopReg :: T.Text -> Maybe (MatchResult T.Text)
-    stopReg s = s =~~ ("^[ \t]*Stopped in ([[:alnum:]_.()]+'*),(.*)" :: T.Text)
+    stopReg s = s =~~ ("^[ \t]*Stopped in ([[:alnum:]_.()']+),(.*)" :: T.Text)
 
 parseBreakResponse :: T.Text -> Either T.Text [Loc.ModuleLoc]
 parseBreakResponse t
@@ -212,7 +212,7 @@ parseShowModules t
   where
     stripped = T.strip t
     matchingLines = mapMaybe matching . T.lines <$> lastMay (splitBy ghcidPrompt stripped)
-    reg = "([[:alnum:]_.]+)[ \\t]+\\( *([^,]*),.*\\)" :: T.Text
+    reg = "([[:alnum:]_.']+)[ \\t]+\\( *([^,]*),.*\\)" :: T.Text
     matching :: T.Text -> Maybe (MatchResult T.Text)
     matching = (=~~ reg)
 
