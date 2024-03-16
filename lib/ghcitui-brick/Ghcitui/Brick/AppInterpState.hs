@@ -32,7 +32,7 @@ data AppInterpState s n = AppInterpState
     , _cmdHistory :: ![[s]]
     , historyPos :: !Int
     -- ^ Current position
-    }
+    } deriving (Show)
 
 -- | Lens accessor for the editor. See '_liveEditor'.
 liveEditor :: Lens.Lens' (AppInterpState s n) (BE.Editor s n)
