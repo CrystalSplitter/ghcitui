@@ -43,7 +43,7 @@ data AppConfig = AppConfig
     -- ^ Command to run to initialise the interpreter.
     , getStartupCommands :: ![T.Text]
     -- ^ Commands to run in ghci during start up.
-    }
+    } deriving (Show)
 
 defaultConfig :: AppConfig
 defaultConfig =

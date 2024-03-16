@@ -67,6 +67,7 @@ data WidgetSizes = WidgetSizes
     { _wsInfoWidth :: !Int
     , _wsReplHeight :: !Int
     }
+    deriving (Show)
 
 {- | Application state wrapper.
 
@@ -106,6 +107,7 @@ data AppState n = AppState
     , splashContents :: !(Maybe T.Text)
     -- ^ Splash to show on start up.
     }
+    deriving (Show)
 
 newtype AppStateM m a = AppStateM {runAppStateM :: m a}
 
