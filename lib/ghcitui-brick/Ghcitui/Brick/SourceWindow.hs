@@ -16,16 +16,17 @@ module Ghcitui.Brick.SourceWindow
     , ScrollDir (..)
     , scrollTo
     , srcWindowScrollPage
-    , updateSrcWindowEnd
     , srcWindowMoveSelectionBy
     , srcWindowReplace
     , setSelectionTo
+    , updateVerticalSpace
 
       -- * Lenses
     , srcElementsL
     , srcNameL
     , srcSelectedLineL
     , srcWindowStartL
+    , srcWindowVerticalSpaceL
 
       -- * Misc
     , srcWindowLength
@@ -48,7 +49,8 @@ data SourceWindow name elem = SourceWindow
     , srcWindowStart :: !Int
     -- ^ The starting position of the window, as a line number (1-indexed).
     -- No lines before this line number is rendered.
-    , srcWindowEnd :: !(Maybe Int)
+    , srcWindowVerticalSpace :: !(Maybe Int)
+    -- ^ The maximum amount of visible lines at any point in time.
     , srcName :: !name
     -- ^ The name of the window.
     , srcSelectedLine :: !(Maybe Int)
@@ -59,11 +61,22 @@ data SourceWindow name elem = SourceWindow
 makeLensesFor
     [ ("srcElements", "srcElementsL")
     , ("srcWindowStart", "srcWindowStartL")
-    , ("srcWindowEnd", "srcWindowEndL")
+    , ("srcWindowVerticalSpace", "srcWindowVerticalSpaceL")
     , ("srcName", "srcNameL")
     , ("srcSelectedLine", "srcSelectedLineL")
     ]
     ''SourceWindow
+
+-- | The difference between the last rendered line and the first rendered line.
+srcWindowLineDiffCount :: SourceWindow name elem -> Maybe Int
+srcWindowLineDiffCount SourceWindow{srcWindowVerticalSpace = Just sWVS} = pure $ sWVS - 1
+srcWindowLineDiffCount _ = Nothing
+
+-- | The line number of the last viewable line in the window.
+getLastRenderedLine :: SourceWindow name elem -> Maybe Int
+getLastRenderedLine srcW@SourceWindow{srcWindowStart} = do
+    diffCount <- srcWindowLineDiffCount srcW
+    pure $ diffCount + srcWindowStart
 
 -- | Render a 'SourceWindow' into a Brick 'B.Widget'.
 renderSourceWindow
@@ -103,23 +116,27 @@ renderSourceWindow func srcW = B.reportExtent (srcName srcW) (B.Widget B.Greedy 
 srcWindowLength :: SourceWindow n e -> Int
 srcWindowLength = Vec.length . srcElements
 
--- | Set the source window end line inside of the given 'EventM' Monad.
-updateSrcWindowEnd :: (Ord n) => SourceWindow n e -> B.EventM n m (SourceWindow n e)
-updateSrcWindowEnd srcW@SourceWindow{srcWindowStart, srcName} = do
-    mExtent <- B.lookupExtent srcName
-    let end = case mExtent of
+{- | Set the source window end line inside of the given 'EventM' Monad.
+     This is primarily for internal consistency, and is cheap. It should be called any time
+     the srcWindowStart changes.
+-}
+updateVerticalSpace :: (Ord n) => SourceWindow n e -> B.EventM n m (SourceWindow n e)
+updateVerticalSpace srcW@SourceWindow{srcName {- , srcContainerName -}} = do
+    mSrcNameExtent <- B.lookupExtent srcName
+    let mSpace = case mSrcNameExtent of
             Just extent ->
-                -- -1 offset since the end is inclusive.
-                Just $ (snd . B.extentSize $ extent) + srcWindowStart - 1
+                Just . snd . B.extentSize $ extent
             _ -> Nothing
-    pure (Lens.set srcWindowEndL end srcW)
+    pure (Lens.set srcWindowVerticalSpaceL mSpace srcW)
 
 -- | Scroll to a given position, and move the source line along the way if needed.
 scrollTo :: Int -> SourceWindow n e -> SourceWindow n e
-scrollTo pos srcW@SourceWindow{srcWindowEnd = Just windowEnd} =
+scrollTo pos srcW@SourceWindow{srcWindowVerticalSpace = Just vSpace} =
     srcW{srcWindowStart = clampedPos, srcSelectedLine = newSelection}
   where
-    clampedPos = Util.clamp (1, srcWindowLength srcW - renderHeight) pos
+    -- Clamp between start line and one window away from the end.
+    clampedPos = Util.clamp (1, srcWindowLength srcW - vSpace) pos
+
     newSelection
         | -- Choose the starting line if we're trying to go past the beginning.
           isScrollingPastStart =
@@ -128,13 +145,13 @@ scrollTo pos srcW@SourceWindow{srcWindowEnd = Just windowEnd} =
           isScrollingPastEnd =
             Just $ srcWindowLength srcW
         | otherwise = newClampedSelectedLine
-    renderHeight = windowEnd - srcWindowStart srcW
     isScrollingPastStart = pos < 1
     isScrollingPastEnd = pos >= srcWindowLength srcW -- Using >= because of a hack.
-    newClampedSelectedLine =
-        Util.clamp
-            (clampedPos, clampedPos + renderHeight)
-            <$> srcSelectedLine srcW
+    newClampedSelectedLine :: Maybe Int
+    newClampedSelectedLine = do
+        ssl <- srcSelectedLine srcW
+        diffCount <- srcWindowLineDiffCount srcW
+        pure $ Util.clamp (clampedPos, clampedPos + diffCount) ssl
 scrollTo _ srcW = srcW
 
 -- | Direction to scroll by.
@@ -142,18 +159,16 @@ data ScrollDir = Up | Down deriving (Eq, Show)
 
 -- | Scroll by a full page in a direction.
 srcWindowScrollPage :: (Ord n) => ScrollDir -> SourceWindow n e -> B.EventM n m (SourceWindow n e)
-srcWindowScrollPage dir srcW = srcWindowScrollPage' dir <$> updateSrcWindowEnd srcW
+srcWindowScrollPage dir srcW = srcWindowScrollPage' dir <$> updateVerticalSpace srcW
 
--- | Internal helper.
 srcWindowScrollPage' :: ScrollDir -> SourceWindow n e -> SourceWindow n e
-srcWindowScrollPage' dir srcW =
+srcWindowScrollPage' dir srcW@SourceWindow{srcWindowStart} =
     case dir of
-        Up ->
-            let renderHeight = windowEnd - srcWindowStart srcW
-             in scrollTo (srcWindowStart srcW - renderHeight) srcW
-        Down -> scrollTo windowEnd srcW
+        Up -> scrollTo onePageUpPos srcW
+        Down -> scrollTo (fromMaybe srcWindowStart (getLastRenderedLine srcW)) srcW
   where
-    windowEnd = fromMaybe 1 $ srcWindowEnd srcW
+    onePageUpPos = srcWindowStart - vSpace + 1 -- Plus one to preserve the top line.
+    vSpace = fromMaybe 0 (srcWindowVerticalSpace srcW)
 
 -- | Set the selection to a given position, and scroll the window accordingly.
 setSelectionTo
@@ -163,14 +178,20 @@ setSelectionTo
     -> SourceWindow n e
     -- ^ Source window to update.
     -> B.EventM n m (SourceWindow n e)
-setSelectionTo pos srcW@SourceWindow{srcSelectedLine = Just sl, srcWindowEnd = Just end} =
-    if pos < srcWindowStart srcW || pos > end
-        then srcWindowMoveSelectionBy delta srcW
-        else do
-            pure $ srcW{srcSelectedLine = Just pos}
-  where
-    delta = pos - sl
-setSelectionTo _ srcW = pure srcW
+setSelectionTo pos srcW = do
+    srcW' <- updateVerticalSpace srcW
+    case (getLastRenderedLine srcW', srcSelectedLine srcW') of
+        (Just end, Just oldSelectedLine) -> do
+            let delta = pos - oldSelectedLine
+            if pos < srcWindowStart srcW' || pos > end
+                then srcWindowMoveSelectionBy delta srcW
+                else do
+                    pure $ srcW{srcSelectedLine = Just pos}
+        _ -> setSelectionToFallback pos srcW'
+
+-- | Fallback function for setting the source window selection line, when we can't set it properly.
+setSelectionToFallback :: Int -> SourceWindow name elem -> B.EventM name m (SourceWindow name elem)
+setSelectionToFallback pos srcW = pure $ srcW{srcSelectedLine = Just pos, srcWindowStart = pos}
 
 -- | Move the selected line by a given amount.
 srcWindowMoveSelectionBy
@@ -181,23 +202,17 @@ srcWindowMoveSelectionBy
     -- ^ Source window to update.
     -> B.EventM n m (SourceWindow n e)
 srcWindowMoveSelectionBy amnt sw = do
-    srcW' <- updateSrcWindowEnd sw
-    case srcWindowEnd srcW' of
-        Just end -> do
-            let start = srcWindowStart srcW'
-            let mSLine = srcSelectedLine srcW'
-            let renderHeight = end - start
-            pure $ case mSLine of
-                Just sLine
-                    | newSLine < start ->
-                        scrollTo newSLine srcW'{srcSelectedLine = Just newSLine}
-                    | newSLine > end ->
-                        scrollTo (newSLine - renderHeight) srcW'{srcSelectedLine = Just newSLine}
-                    | otherwise -> srcW'{srcSelectedLine = Just newSLine}
-                  where
-                    newSLine = Util.clamp (1, Vec.length (srcElements srcW')) $ sLine + amnt
-                _ -> srcW'
-        Nothing -> pure srcW'
+    srcW <- updateVerticalSpace sw
+    case (getLastRenderedLine srcW, srcWindowLineDiffCount srcW, srcSelectedLine srcW) of
+        (Just end, Just renderHeight, Just oldSLine)
+            | newSLine < srcWindowStart srcW ->
+                pure $ scrollTo newSLine srcW{srcSelectedLine = Just newSLine}
+            | newSLine > end ->
+                pure $ scrollTo (newSLine - renderHeight) srcW{srcSelectedLine = Just newSLine}
+            | otherwise -> pure $ srcW{srcSelectedLine = Just newSLine}
+          where
+            newSLine = Util.clamp (1, Vec.length (srcElements srcW)) $ oldSLine + amnt
+        _ -> pure srcW
 
 {- | Replace the contents of a given source window, and reset the pseudo-viewport's position
      to the top.
@@ -215,13 +230,13 @@ mkSourcWindow
     -> T.Text
     -- ^ Text contents of the source window (to be split up).
     -> SourceWindow n T.Text
-mkSourcWindow name text =
+mkSourcWindow sourceWindowName text =
     SourceWindow
         { srcElements = lineVec
         , srcWindowStart = 1
         , srcSelectedLine = Just 1
-        , srcName = name
-        , srcWindowEnd = Nothing
+        , srcName = sourceWindowName
+        , srcWindowVerticalSpace = Nothing
         }
   where
     lineVec = Vec.fromList (T.lines text)

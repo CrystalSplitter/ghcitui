@@ -12,5 +12,6 @@ data AppName
     | BindingViewport
     | ModulesViewport
     | TraceViewport
-    | SourceList
+    | -- | Source Window Name.
+      SourceList
     deriving (Eq, Show, Ord)
