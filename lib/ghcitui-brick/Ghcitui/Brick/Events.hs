@@ -31,9 +31,11 @@ handleEvent :: B.BrickEvent AppName e -> B.EventM AppName (AppState AppName) ()
 handleEvent (B.VtyEvent (V.EvResize _ _)) = B.invalidateCache
 handleEvent ev = do
     appState <- B.get
-    updatedSourceWindow <- SourceWindow.updateSrcWindowEnd (appState ^. AppState.sourceWindow)
+    updatedSourceWindow <- SourceWindow.updateVerticalSpace (appState ^. AppState.sourceWindow)
     let appStateUpdated = Lens.set AppState.sourceWindow updatedSourceWindow appState
-    let handler = case appStateUpdated.activeWindow of
+    B.put appStateUpdated
+    let handler :: B.BrickEvent AppName e -> B.EventM AppName (AppState AppName) ()
+        handler = case appStateUpdated.activeWindow of
             AppState.ActiveCodeViewport -> handleSrcWindowEvent
             AppState.ActiveLiveInterpreter -> handleInterpreterEvent
             AppState.ActiveInfoWindow -> handleInfoEvent

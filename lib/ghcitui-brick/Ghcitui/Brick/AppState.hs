@@ -173,14 +173,27 @@ selectedLine s = fromMaybe 1 (s ^. sourceWindow . SourceWindow.srcSelectedLineL)
 selectPausedLine :: (Ord n) => AppState n -> B.EventM n m (AppState n)
 selectPausedLine s@AppState{interpState} = do
     s' <- setSelectedFile ourSelectedFile s
+    let ourSelectedLine :: Int
+        ourSelectedLine =
+            fromMaybe
+                (selectedLine s')
+                (Loc.startLine . Loc.fSourceRange =<< interpState.pauseLoc)
     newSrcW <- SourceWindow.setSelectionTo ourSelectedLine (s' ^. sourceWindow)
-    pure $ Lens.set sourceWindow newSrcW s'
+    pure
+        . ( \s'' ->
+                writeDebugLog
+                    ( "replacing source window. new line: "
+                        <> Util.showT (s'' ^. sourceWindow . SourceWindow.srcSelectedLineL)
+                        <> " should be "
+                        <> Util.showT ourSelectedLine
+                        <> ", window start "
+                        <> Util.showT (s'' ^. sourceWindow . SourceWindow.srcWindowStartL)
+                    )
+                    s''
+          )
+        . Lens.set sourceWindow newSrcW
+        $ s'
   where
-    ourSelectedLine :: Int
-    ourSelectedLine =
-        fromMaybe
-            (selectedLine s)
-            (Loc.startLine . Loc.fSourceRange =<< interpState.pauseLoc)
     ourSelectedFile = maybe (selectedFile s) (Just . Loc.filepath) interpState.pauseLoc
 
 -- | Write a debug log entry.
