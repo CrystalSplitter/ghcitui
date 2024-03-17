@@ -245,7 +245,9 @@ appendToLogs logs promptEntry state = state{interpLogs = take interpreterLogLimi
     -- TODO: Should be configurable?
     interpreterLogLimit = 1000
 
--- | Reflow entries of text into columns.
+{- | Reflow entries of text into columns.
+     Mostly useful right now for printing autocomplete suggestions into columns.
+-}
 reflowText
     :: Int
     -- ^ Num columns
@@ -265,6 +267,7 @@ reflowText numCols colWidth = go
     maxTextLen = colWidth - 1
     makeLine xs = T.concat (T.justifyLeft colWidth ' ' . shortenText maxTextLen <$> xs)
 
+-- | Limit text to a given length, and cut with an elipses.
 shortenText :: Int -> T.Text -> T.Text
 shortenText maxLen text
     | len <= maxLen = text
