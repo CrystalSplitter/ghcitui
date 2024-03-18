@@ -1,5 +1,23 @@
 # Revision history for ghcitui
 
+## 0.3.0.0 -- 2024-03-17
+
+### API Changes
+
+- **Ghcitui.Brick**
+  - Large rework of SourceWindow's end calculation.
+    - Removed `updateSrcWindowEnd`, replaced with `updateVerticalSpace`.
+    - Added `srcWindowLineDiffCount`.
+
+### Bug fixes
+
+- Can now parse functions with apostraphes in names. (Issue #38)
+- Switching between files when updating contexts now snaps to the stopped line (Issue #41)
+
+### Known issues
+
+See https://github.com/CrystalSplitter/ghcitui/issues for the latest issues.
+
 ## 0.2.0.0 -- 2024-02-11
 
 ### New Features
@@ -33,6 +51,10 @@
 ### Known issues
 
 See https://github.com/CrystalSplitter/ghcitui/issues for the latest issues.
+
+- Can't parse functions with apostrophes in names. (Issue #38) (fixed in 0.3.0.0)
+- Switching between files when updating contexts does not snap to the stopped line (Issue #41)
+  (fixed in 0.3.0.0)
 
 ## 0.1.0.0 -- 2024-01-21
 
