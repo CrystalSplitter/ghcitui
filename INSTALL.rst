@@ -1,6 +1,6 @@
-======================
+**********************
 BUILD AND INSTALLATION
-======================
+**********************
 
 This document describes how to build, install, and test the GHCiTUI program.
 
@@ -11,9 +11,8 @@ GHCiTUI is configured, built, and installed through `Cabal`_. Cabal can be
 installed through the ``ghcup`` command line tool. Familiarity with Cabal
 is not necessary to build GHCiTUI.
 
--------------------------------------
 Installing Latest Stable From Hackage
--------------------------------------
+=====================================
 
 The simplest way to install GHCiTUI is by downloading the package from Hackage:
 
@@ -24,9 +23,12 @@ The simplest way to install GHCiTUI is by downloading the package from Hackage:
   ghcitui --version
   # ghcitui <VERSION>
 
-------------------
+
+If this fails, see `Troubleshooting`_ below for possible
+fixes.
+
 Getting the source
-------------------
+==================
 
 Currently the source code is hosted at
 https://github.com/CrystalSplitter/ghcitui. You can check out the source code
@@ -50,9 +52,8 @@ Or HTTPS:
   # HTTPS
   git clone https://github.com/CrystalSplitter/ghcitui.git
 
---------
 Building
---------
+========
 
 The GHCiTUI cabal configurations defaults to release builds in the
 `cabal.project`_. Therefore, we can just run...
@@ -70,6 +71,35 @@ By default, this will place the ``ghcitui`` executable in
 Contributors may find it useful to make their own
 ``cabal.project.local`` with ``cabal configure`` while debugging.
 
+
+Troubleshooting
+===============
+
+Here we list some known build or install issues.
+
+Cannot find -ltinfo
+-------------------
+
+If you see this error (or similar) when installing ``ghcitui``:
+
+.. code-block::
+
+    -->8--
+    /usr/bin/ld.gold: error: cannot find -ltinfo
+    collect2: error: ld returned 1 exit status
+    `gcc' failed in phase `Linker'. (Exit code: 1)
+    Error: cabal: Failed to build vty-unix-0.2.0.0
+    -->8--
+
+This usually means there's a missing linking dependency on libtinfo which can
+be satisfied by an ncurses development package. On Debian-based systems, this
+can be installed with:
+
+.. code-block:: shell
+    
+    sudo apt install libncurses-dev
+
 .. _Cabal: https://www.haskell.org/cabal/
 .. _cabal.project: ./cabal.project
-.. _install git-lf separately: https://git-lfs.com/
+.. _install git-lfs separately: https://git-lfs.com/
+
