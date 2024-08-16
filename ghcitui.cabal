@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               ghcitui
-version:            0.3.0.0
+version:            0.3.0.1
 synopsis:           A Terminal User Interface (TUI) for GHCi
 
 description:
@@ -31,6 +31,7 @@ tested-with:        GHC == 9.2.8
                     ||==9.4.7
                     ||==9.4.8
                     ||==9.8.1
+                    ||==9.8.2
 
 extra-source-files: LICENSE
                     , assets/splash.txt
@@ -107,7 +108,7 @@ library
 library ghcitui-brick
     hs-source-dirs:     lib/ghcitui-brick
     build-depends:      base >= 4.16 && < 5
-                        , brick >= 2.2 && < 2.4
+                        , brick >= 2.2 && < 2.5
                         , containers
                         , errors
                         , file-embed ^>= 0.0.15
