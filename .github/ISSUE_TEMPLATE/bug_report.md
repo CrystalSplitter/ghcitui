@@ -12,7 +12,7 @@ _Any general details about the bug should go here._
 
 ### To Reproduce
 
-_Steps to reproduce the behavior, if available._
+_Steps to reproduce the behaviour, if available._
 
 ### Expected behaviour
 
