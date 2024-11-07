@@ -99,7 +99,7 @@ handleInterpreterEvent ev = do
                         (T.killToEOF . T.gotoBOF)
                         (appState ^. liveEditor)
             let newAppState2 =
-                    writeDebugLog ("Handled Enter: Ran '" <> cmd <> "'")
+                    writeDebugLog ("handled Enter: Ran '" <> cmd <> "'")
                         . Lens.set (appInterpState . AIS.viewLock) True
                         . Lens.over appInterpState (AIS.pushHistory [cmd])
                         $ appendToLogs output cmd newAppState1
@@ -136,9 +136,9 @@ handleInterpreterEvent ev = do
                             $ s
             B.put
                 . writeDebugLog
-                    ( "Handled Tab, Prefix was: '"
+                    ( "handled Tab, Prefix was: '"
                         <> cmd
-                        <> "' Completions were: "
+                        <> "' completions were: "
                         <> showT completions
                     )
                 . updateCompletions completions
@@ -161,7 +161,7 @@ handleInterpreterEvent ev = do
                         else s
             let wDebug s =
                     writeDebugLog
-                        ( "Handled Up; historyPos is "
+                        ( "handled Up; historyPos is "
                             <> (showT . AIS.historyPos . getAis $ s)
                         )
                         s
@@ -175,7 +175,7 @@ handleInterpreterEvent ev = do
         B.VtyEvent (V.EvKey V.KDown _) -> do
             let wDebug s =
                     writeDebugLog
-                        ( "Handled Down; historyPos is "
+                        ( "handled Down; historyPos is "
                             <> (showT . AIS.historyPos . getAis $ s)
                         )
                         s
@@ -368,7 +368,7 @@ moveSelectedLineby movAmnt = do
     -- These two lines need to be re-rendered.
     invalidateCachedLine oldLineno
     invalidateCachedLine newLineno
-    B.put $ writeDebugLog ("Selected line is: " <> showT newLineno) movedAppState
+    B.put $ writeDebugLog ("selected line is: " <> showT newLineno) movedAppState
 
 scrollPage :: SourceWindow.ScrollDir -> B.EventM AppName (AppState AppName) ()
 scrollPage dir = do
