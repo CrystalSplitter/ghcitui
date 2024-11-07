@@ -161,6 +161,37 @@ Modules
 - ``+``, ``-``: Increase/decrease the info panel size.
 - ``<Enter>``, ``o``: Open the selected module.
 
+-------
+Tracing
+-------
+
+Tracing works the same as in GHCi, but there's a panel to display the current
+backtrace in the "Trace History" subpanel. To populate the Trace History panel,
+run ``:trace`` in the Live Interpreter panel with a breakpoint set. For example:
+
+.. code-block::
+
+  $ cat Main.hs
+  main = putStrLn "Hello" >> putStrLn "World!"
+
+And then inside ghcitui...
+
+.. code-block::
+
+  # In the Live Interpreter Panel...
+
+  ghci> :l Main.hs
+  [1 of 2] Compiling Main             ( Main.hs, interpreted )
+  Ok, one module loaded
+  ghci> :b main
+  Breakpoint 0 activated at Main.hs:1:8-44
+  ghci> :trace main
+  Stopped in Main.main, Main.hs:1:8-44
+  _result :: IO () = _
+  ghci> :step
+
+This should then populate the Trace History panel.
+
 -------------------------------
 Reporting Bugs/Feature Requests
 -------------------------------
