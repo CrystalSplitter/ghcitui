@@ -152,15 +152,24 @@ selectedFile = _selectedFile
 setSelectedFile :: (MonadIO m) => Maybe FilePath -> AppState n -> m (AppState n)
 setSelectedFile mayFP appState =
     if mayFP == _selectedFile appState
-        then -- If we're selecting the same file again, do nothing.
-            pure appState
+        then do
+            -- If we're selecting the same file again, do nothing.
+            let debugMsg =
+                    "not setting selected file to '"
+                        <> maybe "<Nothing>" T.pack mayFP
+                        <> "' because it is already set to it"
+            pure $ writeDebugLog debugMsg appState
         else do
             -- Update the source map with the new file, and replace the window contents.
             updatedAppState <- liftIO $ updateSourceMap appState{_selectedFile = mayFP}
             let contents = mayFP >>= (sourceMap updatedAppState Map.!?)
             let elements = maybe Vec.empty (Vec.fromList . T.lines) contents
             let newSrcW = SourceWindow.srcWindowReplace elements (appState ^. sourceWindow)
-            pure updatedAppState{_sourceWindow = newSrcW}
+            let debugMsg =
+                    "set selected file to '"
+                        <> maybe "<Nothing>" T.pack mayFP
+                        <> "'"
+            pure . writeDebugLog debugMsg $ updatedAppState{_sourceWindow = newSrcW}
 
 -- -------------------------------------------------------------------------------------------------
 -- State Line Details
@@ -336,7 +345,8 @@ makeInitialState appConfig target cwd = do
                 -- If we don't have a selected file, but we have a module loaded,
                 -- select the last one.
                 _ -> Nothing
-    updateSourceMap
+    setSelectedFile
+        selectedFile'
         AppState
             { interpState
             , getCurrentWorkingDir = cwd'
@@ -346,7 +356,7 @@ makeInitialState appConfig target cwd = do
             , debugConsoleLogs = mempty
             , displayDebugConsoleLogs = getDebugConsoleOnStart appConfig
             , interpLogs = mempty
-            , _selectedFile = selectedFile'
+            , _selectedFile = Nothing -- This will be overriden immediately.
             , _infoPanelSelectedModule = 0
             , sourceMap = mempty
             , _currentWidgetSizes =
