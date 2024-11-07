@@ -148,6 +148,7 @@ sourceWindow = Lens.lens _sourceWindow (\x srcW -> x{_sourceWindow = srcW})
 selectedFile :: AppState n -> Maybe FilePath
 selectedFile = _selectedFile
 
+-- | Change the selected file for the source window.
 setSelectedFile :: (MonadIO m) => Maybe FilePath -> AppState n -> m (AppState n)
 setSelectedFile mayFP appState =
     if mayFP == _selectedFile appState
@@ -239,10 +240,11 @@ updateSourceMapWithFilepath s filepath
                 let logMsg = "updated source map with " <> T.pack filepath
                 pure (writeDebugLog logMsg s{sourceMap = newSourceMap})
 
--- | Remove CR line endings.
+-- | Remove CR line endings. Important for files checked in on Windows!
 stripCREndings :: T.Text -> T.Text
 stripCREndings = T.replace "\r" ""
 
+-- | Return the internal mapping of module names to filepaths.
 listAvailableSources :: AppState n -> [(T.Text, FilePath)]
 listAvailableSources = Loc.moduleFileMapAssocs . Daemon.moduleFileMap . interpState
 
