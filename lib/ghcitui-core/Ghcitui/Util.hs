@@ -1,7 +1,15 @@
-module Ghcitui.Util (showT, splitBy, linesToText, clamp, getNumDigits, formatDigits) where
+module Ghcitui.Util
+    ( showT
+    , splitBy
+    , linesToText
+    , clamp
+    , getNumDigits
+    , formatDigits
+    , dropMiddleToFitText
+    ) where
 
-import Data.Text (Text, breakOn, drop, length, pack)
-import Prelude hiding (drop, length)
+import Data.Text (Text, breakOn, drop, length, pack, take, takeEnd)
+import Prelude hiding (drop, length, take)
 
 -- | Split text based on a delimiter.
 splitBy
@@ -24,7 +32,7 @@ linesToText = pack . Prelude.unlines
 showT :: (Show a) => a -> Text
 showT = pack . show
 
--- Return the number of digits in a given integral
+-- | Return the number of digits in a given integral
 getNumDigits :: (Integral a) => a -> Int
 getNumDigits 0 = 1
 getNumDigits num = truncate (logBase 10 (fromIntegral num) :: Double) + 1
@@ -44,12 +52,28 @@ formatDigits spacing num = pack (replicate amount ' ') <> pack (show num)
 clamp
     :: (Ord a)
     => (a, a)
-    -- ^ The minimum and maximum (inclusive)
+    -- ^ The minimum and maximum (inclusive).
     -> a
-    -- ^ Value to clamp
+    -- ^ Value to clamp.
     -> a
-    -- ^ Result
+    -- ^ Result.
 clamp (mi, mx) v
     | v < mi = mi
     | v > mx = mx
     | otherwise = v
+
+-- | Remove the inner characters of a Text to fit within a maximum width.
+dropMiddleToFitText
+    :: Int
+    -- ^ Maximum length to trim to.
+    -> Text
+    -- ^ Text to shorten.
+    -> Text
+    -- ^ Result.
+dropMiddleToFitText w text
+    | length text <= w = text
+    | otherwise = prefix <> "…" <> suffix
+  where
+    halfWidth = fromIntegral (w - 1) / 2.0 :: Float
+    prefix = take (floor halfWidth) text
+    suffix = takeEnd (ceiling halfWidth) text

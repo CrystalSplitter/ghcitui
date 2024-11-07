@@ -51,6 +51,9 @@ appDraw s =
 dialogMaxWidth :: (Integral a) => a
 dialogMaxWidth = 94
 
+maxSourceFilePathWidth :: (Integral a) => a
+maxSourceFilePathWidth = 45
+
 {- | Draw the dialog layer.
 
      If there's no dialog, returns an 'emptyWidget'.
@@ -92,7 +95,11 @@ drawBaseLayer s =
     sourceLabel =
         markLabel
             (s.activeWindow == ActiveCodeViewport)
-            ( "Source: " <> maybe "?" T.pack (AppState.selectedFile s)
+            ( "Source: "
+                <> maybe
+                    "?"
+                    (Util.dropMiddleToFitText maxSourceFilePathWidth . T.pack)
+                    (AppState.selectedFile s)
             )
             "[Esc]"
     interpreterLabel =
