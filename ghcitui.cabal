@@ -128,8 +128,11 @@ library ghcitui-brick
                         , Ghcitui.Brick.BrickUI
                         , Ghcitui.Brick.DrawSourceViewer
                         , Ghcitui.Brick.Events
+                        , Ghcitui.Brick.EventUtils
                         , Ghcitui.Brick.HelpText
+                        , Ghcitui.Brick.InterpWindowEvents
                         , Ghcitui.Brick.SourceWindow
+                        , Ghcitui.Brick.SourceWindowEvents
                         , Ghcitui.Brick.SplashTextEmbed
     ghc-options:        -Wall
                         -Wcompat
