@@ -97,6 +97,7 @@ library
                         -Wincomplete-record-updates
                         -Wpartial-fields
                         -Wredundant-constraints
+                        -Werror
     default-language:   Haskell2010
     default-extensions: DuplicateRecordFields
                         MonoLocalBinds
@@ -139,6 +140,7 @@ library ghcitui-brick
                         -Wincomplete-record-updates
                         -Wpartial-fields
                         -Wredundant-constraints
+                        -Werror
     default-language:   Haskell2010
     default-extensions: DuplicateRecordFields
                         LambdaCase
