@@ -127,6 +127,7 @@ handleSourceWindowPostCb (BreakpointCb appState moduleLoc) = do
             -- If we don't know, just invalidate everything.
             invalidateLineCache
     B.put appState{interpState}
+-- For all other AppEvent types, ignore them. They're handled elsewhere.
 handleSourceWindowPostCb _ = pure ()
 
 moveSelectedLineby :: Int -> B.EventM AppName (AppState AppName) ()
