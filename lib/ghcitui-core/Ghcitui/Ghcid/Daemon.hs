@@ -162,7 +162,11 @@ contextReset state =
 appendExecHist :: T.Text -> InterpState a -> InterpState a
 appendExecHist cmd s@InterpState{execHist} = s{execHist = cmd : execHist}
 
--- | Is the daemon currently in the middle of an expression evaluation?
+{- | Is the daemon currently in the middle of an expression evaluation, but paused?
+     Note, this does not indicate whether there's a scheduled 'DaemonIO' operation,
+     but rather just indicates whether we have stopped at a breakpoint in the middle
+     of evaluation.
+-}
 isExecuting :: InterpState a -> Bool
 isExecuting InterpState{func = Nothing} = False
 isExecuting InterpState{func = Just _} = True
@@ -334,7 +338,7 @@ load :: (Monoid a) => FilePath -> InterpState a -> DaemonIO (InterpState a)
 load filepath = execMuted (T.pack $ ":load " <> filepath)
 
 {- | Return tab completions for a given prefix.
-     Analog to @:complete repl "<prefix>"@
+     Analog to @:complete repl "\<prefix\>"@
      See https://downloads.haskell.org/ghc/latest/docs/users_guide/ghci.html#ghci-cmd-:complete
 -}
 tabComplete
