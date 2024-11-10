@@ -7,6 +7,7 @@ module Ghcitui.Brick.BrickUI
     ) where
 
 import qualified Brick as B
+import qualified Brick.BChan as B
 import qualified Brick.Widgets.Border as B
 import qualified Brick.Widgets.Center as B
 import Brick.Widgets.Core ((<+>), (<=>))
@@ -29,7 +30,7 @@ import Ghcitui.Brick.AppState
     , makeInitialState
     )
 import qualified Ghcitui.Brick.AppState as AppState
-import Ghcitui.Brick.AppTopLevel (AppName (..))
+import Ghcitui.Brick.AppTopLevel (AppName (..), CustomAppEvent)
 import qualified Ghcitui.Brick.DrawSourceViewer as DrawSourceViewer
 import qualified Ghcitui.Brick.Events as Events
 import qualified Ghcitui.Brick.HelpText as HelpText
@@ -53,6 +54,9 @@ dialogMaxWidth = 94
 
 maxSourceFilePathWidth :: (Integral a) => a
 maxSourceFilePathWidth = 45
+
+eventChannelSize :: (Integral a) => a
+eventChannelSize = 10
 
 {- | Draw the dialog layer.
 
@@ -297,7 +301,7 @@ markLabel True labelTxt _ =
 -- -------------------------------------------------------------------------------------------------
 
 -- | Brick main program.
-brickApp :: B.App AppS e AppName
+brickApp :: B.App AppS (CustomAppEvent AppS) AppName
 brickApp =
     B.App
         { B.appDraw = appDraw
@@ -326,7 +330,9 @@ launchBrick :: AppConfig.AppConfig -> T.Text -> FilePath -> IO ()
 launchBrick conf target cwd = do
     T.putStrLn $ "Starting up GHCiTUI with: `" <> AppConfig.getCmd conf <> "`..."
     T.putStrLn "This can take a while..."
-    initialState <- makeInitialState conf target cwd
-    _ <- B.defaultMain brickApp initialState
+    eventChan <- B.newBChan eventChannelSize
+    initialState <- makeInitialState conf target cwd eventChan
+    (_, vty) <- B.customMainWithDefaultVty (Just eventChan) brickApp initialState
+    V.shutdown vty -- Got to shutdown the VTY separately, otherwise we get graphical glitches.
     T.putStrLn "GHCiTUI has shut down; have a nice day :)"
     pure ()

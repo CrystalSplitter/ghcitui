@@ -2,7 +2,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 
-module Ghcitui.Brick.SourceWindowEvents (handleSrcWindowEvent) where
+module Ghcitui.Brick.SourceWindowEvents (handleSrcWindowEvent, handleSourceWindowPostCb) where
 
 import qualified Brick.Main as B
 import qualified Brick.Types as B
@@ -13,15 +13,17 @@ import qualified Graphics.Vty as V
 import Lens.Micro ((^.))
 import qualified Lens.Micro as Lens
 
+import qualified Brick.BChan as B
 import Ghcitui.Brick.AppState as AppState
 import Ghcitui.Brick.AppTopLevel
     ( AppName (..)
+    , CustomAppEvent (..)
     )
+import Ghcitui.Brick.EventUtils
 import qualified Ghcitui.Brick.SourceWindow as SourceWindow
 import qualified Ghcitui.Ghcid.Daemon as Daemon
 import qualified Ghcitui.Loc as Loc
 import Ghcitui.Util (showT)
-import Ghcitui.Brick.EventUtils
 
 -- -------------------------------------------------------------------------------------------------
 -- Code Viewport Event Handling
@@ -32,21 +34,20 @@ handleSrcWindowEvent :: B.BrickEvent AppName e -> B.EventM AppName (AppState App
 handleSrcWindowEvent (B.VtyEvent (V.EvKey key ms))
     | key `elem` [V.KChar 'q', V.KEsc] = do
         confirmQuit
+
+    -- GHCi Blocking Events.
     | key == V.KChar 's' = do
-        appState <- B.get
-        newState <- Daemon.step `runDaemon` appState
-        invalidateLineCache
-        B.put newState
+        appState@AppState.AppState{AppState.interpState} <- B.get
+        let callback = redrawStepCb appState
+        liftIO $ Daemon.scheduleWithCb interpState (Daemon.step interpState) callback
     | key == V.KChar 'c' = do
-        appState <- B.get
-        newState <- Daemon.continue `runDaemon` appState
-        invalidateLineCache
-        B.put newState
+        appState@AppState.AppState{AppState.interpState} <- B.get
+        let callback = redrawStepCb appState
+        liftIO $ Daemon.scheduleWithCb interpState (Daemon.step interpState) callback
     | key == V.KChar 't' = do
-        appState <- B.get
-        newState <- Daemon.trace `runDaemon` appState
-        invalidateLineCache
-        B.put newState
+        appState@AppState.AppState{AppState.interpState} <- B.get
+        let callback = redrawStepCb appState
+        liftIO $ Daemon.scheduleWithCb interpState (Daemon.trace interpState) callback
     | key == V.KChar 'b' = do
         appState <- B.get
         insertBreakpoint appState
@@ -80,6 +81,53 @@ handleSrcWindowEvent (B.VtyEvent (V.EvKey key ms))
         B.invalidateCacheEntry ModulesViewport
     | key == V.KChar '?' = B.modify (\state -> state{activeWindow = AppState.ActiveDialogHelp})
 handleSrcWindowEvent _ = pure ()
+
+{- | Redraw Step Callback. Called asynchronously after the 'DaemonIO' resolves
+     for 'step' and similar.
+-}
+redrawStepCb
+    :: AppState n
+    -- ^ 'AppState' to use for asynchronous channel communication.
+    -> Either Daemon.DaemonError (Daemon.InterpState ())
+    -- ^ The incoming response from the Daemon for the 'step' (or similar) operation.
+    -> IO ()
+    -- ^ IO used to write to the event bounded channel.
+redrawStepCb appState (Right interpState) =
+    B.writeBChan (AppState.eventChannel appState) (RedrawStepCb appState{interpState})
+redrawStepCb appState (Left msg) =
+    B.writeBChan (AppState.eventChannel appState) (ErrorOnCb appState (showT msg))
+
+breakpointCb
+    :: Loc.ModuleLoc
+    -> AppState n
+    -> Either Daemon.DaemonError (Daemon.InterpState ())
+    -> IO ()
+breakpointCb moduleLoc appState (Right interpState) =
+    B.writeBChan
+        (AppState.eventChannel appState)
+        (RedrawBreakpointCb appState{interpState} moduleLoc)
+breakpointCb _ appState (Left msg) =
+    B.writeBChan (AppState.eventChannel appState) (ErrorOnCb appState (showT msg))
+
+-- | Synchronous code to update the state after a SourceWindowEvent callback.
+handleSourceWindowPostCb
+    :: CustomAppEvent (AppState AppName) -> B.EventM AppName (AppState AppName) ()
+handleSourceWindowPostCb (RedrawStepCb appState) = do
+    B.put =<< AppState.selectPausedLine appState
+    invalidateLineCache
+handleSourceWindowPostCb (RedrawBreakpointCb appState moduleLoc) = do
+    let interpState = AppState.interpState appState
+    -- We may need to be smarter about this,
+    -- because there's a chance that the module loc 'ml'
+    -- doesn't actually refer to this viewed file?
+    case Loc.singleify (Loc.sourceRange moduleLoc) of
+        Just (lineno, _colrange) ->
+            invalidateCachedLine lineno
+        _ ->
+            -- If we don't know, just invalidate everything.
+            invalidateLineCache
+    B.put appState{interpState}
+handleSourceWindowPostCb _ = pure ()
 
 moveSelectedLineby :: Int -> B.EventM AppName (AppState AppName) ()
 moveSelectedLineby movAmnt = do
@@ -123,24 +171,14 @@ insertBreakpoint appState =
                         <> T.unpack err
             liftIO $ fail errMsg
         Right ml -> do
-            let daemonOp = Daemon.toggleBreakpointLine (Daemon.ModLoc ml) appState.interpState
-            interpState <-
-                liftIO $ do
-                    eNewState <- Daemon.run daemonOp
-                    case eNewState of
-                        Right out -> pure out
-                        Left er -> error $ show er
-            -- We may need to be smarter about this,
-            -- because there's a chance that the module loc 'ml'
-            -- doesn't actually refer to this viewed file?
-            case Loc.singleify (Loc.sourceRange ml) of
-                Just (lineno, _colrange) ->
-                    invalidateCachedLine lineno
-                _ ->
-                    -- If we don't know, just invalidate everything.
-                    invalidateLineCache
-            B.put appState{interpState}
-
+            let interpState = AppState.interpState appState
+            let daemonOp = Daemon.toggleBreakpointLine (Daemon.ModLoc ml) interpState
+            let callback = breakpointCb ml appState
+            liftIO $
+                Daemon.scheduleWithCb
+                    interpState
+                    daemonOp
+                    callback
 
 -- | Get Location that's currently selected.
 selectedModuleLoc :: AppState n -> Either T.Text Loc.ModuleLoc

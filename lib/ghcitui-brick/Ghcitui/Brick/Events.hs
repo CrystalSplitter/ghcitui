@@ -6,6 +6,7 @@ module Ghcitui.Brick.Events (handleEvent, handleCursorPosition) where
 import qualified Brick.Main as B
 import qualified Brick.Types as B
 import Control.Monad.IO.Class (MonadIO (..))
+import qualified Data.Text as T
 import qualified Graphics.Vty as V
 import Lens.Micro ((^.))
 import qualified Lens.Micro as Lens
@@ -13,15 +14,16 @@ import qualified Lens.Micro as Lens
 import Ghcitui.Brick.AppState as AppState
 import Ghcitui.Brick.AppTopLevel
     ( AppName (..)
+    , CustomAppEvent (..)
     )
 import Ghcitui.Brick.EventUtils (invalidateLineCache)
+import qualified Ghcitui.Brick.InterpWindowEvents as InterpWindowEvents
 import qualified Ghcitui.Brick.SourceWindow as SourceWindow
 import qualified Ghcitui.Brick.SourceWindowEvents as SourceWindowEvents
-import qualified Ghcitui.Brick.InterpWindowEvents as InterpWindowEvents
 import qualified Ghcitui.Ghcid.Daemon as Daemon
 
 -- | Handle any Brick event and update the state.
-handleEvent :: B.BrickEvent AppName e -> B.EventM AppName (AppState AppName) ()
+handleEvent :: B.BrickEvent AppName (CustomAppEvent (AppState AppName)) -> B.EventM AppName (AppState AppName) ()
 handleEvent (B.VtyEvent (V.EvResize _ _)) = B.invalidateCache
 handleEvent (B.VtyEvent (V.EvKey (V.KChar 'c') [V.MCtrl])) = do
     -- Handle interrupts right away, regardless of our window.
@@ -29,6 +31,12 @@ handleEvent (B.VtyEvent (V.EvKey (V.KChar 'c') [V.MCtrl])) = do
     liftIO . Daemon.interruptDaemon . AppState.interpState $ appState
     -- Invalidate everything.
     B.invalidateCache
+handleEvent (B.AppEvent (ErrorOnCb appState msg)) =
+    -- Handle errors cleanly and crash out.
+    quit appState >> error (T.unpack msg)
+handleEvent (B.AppEvent ev) = do
+    SourceWindowEvents.handleSourceWindowPostCb ev
+    InterpWindowEvents.handleInterpWindowPostCb ev
 handleEvent ev = do
     appState <- B.get
     updatedSourceWindow <- SourceWindow.updateVerticalSpace (appState ^. AppState.sourceWindow)
@@ -80,7 +88,6 @@ handleInfoEvent ev = do
             invalidateLineCache
         _ -> pure ()
     B.invalidateCacheEntry ModulesViewport
-
 
 -- -------------------------------------------------------------------------------------------------
 -- Dialog boxes
