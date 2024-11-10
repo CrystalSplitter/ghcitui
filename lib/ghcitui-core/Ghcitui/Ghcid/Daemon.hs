@@ -23,6 +23,19 @@ module Ghcitui.Ghcid.Daemon
     , StartupConfig (..)
     , quit
 
+      -- * Daemon running types
+
+      -- | These types are used for restricting concurrent operations and forcing error handling.
+    , DaemonIO
+    , DaemonError
+
+      -- * Running operations
+
+      -- | For running 'DaemonIO' operations.
+    , schedule
+    , scheduleWithCb
+    , threadUnsafeRun
+
       -- * Base operations with the daemon
     , exec
     , execCleaned
@@ -51,12 +64,7 @@ module Ghcitui.Ghcid.Daemon
       -- * Misc
     , isExecuting
     , BreakpointArg (..)
-    , run
-    , schedule
-    , scheduleWithCb
     , interruptDaemon
-    , DaemonIO
-    , DaemonError
     , LogOutput (..)
     ) where
 
@@ -179,7 +187,7 @@ startup
     -- ^ Working directory to run the start up command in.
     -> StartupConfig
     -- ^ Where do we put the logging?
-    -> DaemonIO (InterpState ())
+    -> IO (Either DaemonError (InterpState ()))
     -- ^ The newly created interpreter handle.
 startup cmd wd logOutput = do
     -- We don't want any highlighting or colours.
@@ -188,7 +196,10 @@ startup cmd wd logOutput = do
         (ghci, _) <- Ghcid.startGhci realCmd (Just wd) startupStreamCallback
         emptyInterpreterState ghci logOutput
     logDebug "|startup| GHCi Daemon initted" state
-    updateState state
+    _ <- takeMVar (_ghciLock state)
+    updatedState <- threadUnsafeRun $ updateState state
+    _ <- putMVar (_ghciLock state) ()
+    pure updatedState
 
 startupStreamCallback :: Ghcid.Stream -> String -> IO ()
 startupStreamCallback stream msg = do
@@ -338,7 +349,7 @@ load :: (Monoid a) => FilePath -> InterpState a -> DaemonIO (InterpState a)
 load filepath = execMuted (T.pack $ ":load " <> filepath)
 
 {- | Return tab completions for a given prefix.
-     Analog to @:complete repl "\<prefix\>"@
+     Analogue to @:complete repl "\<prefix\>"@
      See https://downloads.haskell.org/ghc/latest/docs/users_guide/ghci.html#ghci-cmd-:complete
 -}
 tabComplete
@@ -574,32 +585,44 @@ data DaemonError
     deriving (Eq, Show)
 
 {- | An IO operation that can fail into a DaemonError.
-     Execute them synchronously in IO through 'run'.
+     Execute them synchronously in IO through 'threadUnsafeRun'.
      Execute them asynchronously in IO through 'schedule'.
+     Execute them with a callback with 'scheduleWithCb'
 -}
 type DaemonIO r = ExceptT DaemonError IO r
 
--- | Convert Daemon operation to an IO operation.
-run :: DaemonIO r -> IO (Either DaemonError r)
-run = runExceptT
+{- | Convert Daemon operation to an IO operation. NOT THREAD SAFE.
 
--- | Schedule execution of this Daemon IO operation, with the result being stored in the MVar.
-schedule :: DaemonIO r -> IO (MVar (Either DaemonError r))
-schedule daemonIO = do
+     Prefer 'schedule' or 'scheduleWithCb' in a multithreaded context.
+-}
+threadUnsafeRun :: DaemonIO r -> IO (Either DaemonError r)
+threadUnsafeRun = runExceptT
+
+{- | Schedule execution of this 'DaemonIO' operation, with the result being stored in the MVar.
+
+     This function is a thread safe way to run 'DaemonIO' operations.
+-}
+schedule :: InterpState a -> DaemonIO r -> IO (MVar (Either DaemonError r))
+schedule state daemonIO = do
     opResultVar <- newEmptyMVar
-    _ <- forkIO $ ioOp opResultVar
-    pure opResultVar
-  where
-    ioOp opResultVar = do
-        result <- run daemonIO
+    _ <- forkIO $ do
+        _ <- takeMVar (_ghciLock state)
+        result <- threadUnsafeRun daemonIO
+        _ <- putMVar (_ghciLock state) ()
         putMVar opResultVar result
+    pure opResultVar
 
--- | Schedule execution of this Daemon IO operation, and
+{- | Schedule execution of this Daemon IO operation, and run a callback with the result.
+     'scheduleWithCb' is very common throughout the ghcitui source code, as it primarily
+     allows inter-thread communication through the use of callbacks.
+
+     This function is a thread safe way to run 'DaemonIO' operations.
+-}
 scheduleWithCb :: InterpState a -> DaemonIO r -> (Either DaemonError r -> IO ()) -> IO ()
 scheduleWithCb state daemonIO callback = do
     _ <- forkIO $ do
         _ <- takeMVar (_ghciLock state)
-        result <- run daemonIO
+        result <- threadUnsafeRun daemonIO
         _ <- putMVar (_ghciLock state) ()
         callback result
     pure ()
