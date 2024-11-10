@@ -1,5 +1,4 @@
 {-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE OverloadedRecordDot #-}
 
 module Ghcitui.Brick.EventUtils
     ( shortenText
