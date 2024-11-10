@@ -30,8 +30,8 @@ type AppEventCompletions = [T.Text]
 -- | Callback event types.
 data CustomAppEvent state
     = ErrorOnCb state T.Text
-    | RedrawStepCb state
-    | RedrawBreakpointCb state Loc.ModuleLoc
+    | StepCb state
+    | BreakpointCb state Loc.ModuleLoc
     | ReplExecCb state AppEventCmd AppEventLogs
     | ReplTabCompleteCb state AppEventCmd (AppEventPrefix, AppEventCompletions)
     deriving (Eq, Show, Ord)
