@@ -52,11 +52,15 @@ module Ghcitui.Ghcid.Daemon
     , isExecuting
     , BreakpointArg (..)
     , run
+    , schedule
+    , scheduleWithCb
+    , interruptDaemon
     , DaemonIO
     , DaemonError
     , LogOutput (..)
     ) where
 
+import Control.Concurrent (MVar, forkIO, newEmptyMVar, newMVar, putMVar, takeMVar)
 import Control.Error
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (..))
@@ -76,9 +80,13 @@ import qualified Ghcitui.NameBinding as NameBinding
 import Ghcitui.Util (showT)
 import qualified Ghcitui.Util as Util
 
+type GhciHandle = Ghcid.Ghci
+
 data InterpState a = InterpState
-    { _ghci :: !Ghcid.Ghci
+    { _ghci :: !GhciHandle
     -- ^ GHCiD handle.
+    , _ghciLock :: !(MVar ())
+    -- ^ Lock for single-threaded GHCi operations.
     , func :: !(Maybe T.Text)
     -- ^ Current pause position function name.
     , pauseLoc :: !(Maybe Loc.FileLoc)
@@ -118,22 +126,25 @@ instance Show (InterpState a) where
 {- | Create an empty/starting interpreter state.
      Usually you don't want to call this directly. Instead use 'startup'.
 -}
-emptyInterpreterState :: (Monoid a) => Ghcid.Ghci -> StartupConfig -> InterpState a
-emptyInterpreterState ghci startupConfig =
-    InterpState
-        { _ghci = ghci
-        , func = Nothing
-        , pauseLoc = Nothing
-        , moduleFileMap = mempty
-        , stack = mempty
-        , breakpoints = mempty
-        , bindings = Right mempty
-        , status = Right mempty
-        , logLevel = StartupConfig.logLevel startupConfig
-        , logOutput = StartupConfig.logOutput startupConfig
-        , execHist = mempty
-        , traceHist = mempty
-        }
+emptyInterpreterState :: (Monoid a) => GhciHandle -> StartupConfig -> IO (InterpState a)
+emptyInterpreterState ghci startupConfig = do
+    ghciLock <- newMVar ()
+    pure $
+        InterpState
+            { _ghci = ghci
+            , _ghciLock = ghciLock
+            , func = Nothing
+            , pauseLoc = Nothing
+            , moduleFileMap = mempty
+            , stack = mempty
+            , breakpoints = mempty
+            , bindings = Right mempty
+            , status = Right mempty
+            , logLevel = StartupConfig.logLevel startupConfig
+            , logOutput = StartupConfig.logOutput startupConfig
+            , execHist = mempty
+            , traceHist = mempty
+            }
 
 -- | Reset anything context-based in a 'InterpState'.
 contextReset :: (Monoid a) => InterpState a -> InterpState a
@@ -169,9 +180,9 @@ startup
 startup cmd wd logOutput = do
     -- We don't want any highlighting or colours.
     let realCmd = "env TERM='dumb' " <> cmd
-    let startOp = Ghcid.startGhci realCmd (Just wd) startupStreamCallback
-    (ghci, _) <- liftIO startOp
-    let state = emptyInterpreterState ghci logOutput
+    state <- liftIO $ do
+        (ghci, _) <- Ghcid.startGhci realCmd (Just wd) startupStreamCallback
+        emptyInterpreterState ghci logOutput
     logDebug "|startup| GHCi Daemon initted" state
     updateState state
 
@@ -559,10 +570,36 @@ data DaemonError
     deriving (Eq, Show)
 
 {- | An IO operation that can fail into a DaemonError.
-     Execute them to IO through 'run'.
+     Execute them synchronously in IO through 'run'.
+     Execute them asynchronously in IO through 'schedule'.
 -}
 type DaemonIO r = ExceptT DaemonError IO r
 
 -- | Convert Daemon operation to an IO operation.
 run :: DaemonIO r -> IO (Either DaemonError r)
 run = runExceptT
+
+-- | Schedule execution of this Daemon IO operation, with the result being stored in the MVar.
+schedule :: DaemonIO r -> IO (MVar (Either DaemonError r))
+schedule daemonIO = do
+    opResultVar <- newEmptyMVar
+    _ <- forkIO $ ioOp opResultVar
+    pure opResultVar
+  where
+    ioOp opResultVar = do
+        result <- run daemonIO
+        putMVar opResultVar result
+
+-- | Schedule execution of this Daemon IO operation, and
+scheduleWithCb :: InterpState a -> DaemonIO r -> (Either DaemonError r -> IO ()) -> IO ()
+scheduleWithCb state daemonIO callback = do
+    _ <- forkIO $ do
+        _ <- takeMVar (_ghciLock state)
+        result <- run daemonIO
+        _ <- putMVar (_ghciLock state) ()
+        callback result
+    pure ()
+
+-- | Stop the currently executing process in the daemon.
+interruptDaemon :: InterpState a -> IO ()
+interruptDaemon InterpState{_ghci} = Ghcid.interrupt _ghci
