@@ -33,7 +33,7 @@ import Ghcitui.Util (showT)
 -- Interpreter Event Handling
 -- -------------------------------------------------------------------------------------------------
 
--- | Handle events when the interpreter (live GHCi) is selected.
+-- | Handle events when the interpreter (live GHCi/REPL) is selected.
 handleInterpreterEvent :: B.BrickEvent AppName e -> B.EventM AppName (AppState AppName) ()
 handleInterpreterEvent ev = do
     appState <- B.get
@@ -245,4 +245,5 @@ handleInterpWindowPostCb (ReplTabCompleteCb appState cmd (prefix, completions)) 
             )
         . updateCompletions completions
         $ appState
+-- For all other AppEvent types, ignore them. They're handled elsewhere.
 handleInterpWindowPostCb _ = pure ()

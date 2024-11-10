@@ -23,7 +23,10 @@ import qualified Ghcitui.Brick.SourceWindowEvents as SourceWindowEvents
 import qualified Ghcitui.Ghcid.Daemon as Daemon
 
 -- | Handle any Brick event and update the state.
-handleEvent :: B.BrickEvent AppName (CustomAppEvent (AppState AppName)) -> B.EventM AppName (AppState AppName) ()
+handleEvent
+    :: B.BrickEvent AppName (CustomAppEvent (AppState AppName))
+    -- ^ Event to handle.
+    -> B.EventM AppName (AppState AppName) ()
 handleEvent (B.VtyEvent (V.EvResize _ _)) = B.invalidateCache
 handleEvent (B.VtyEvent (V.EvKey (V.KChar 'c') [V.MCtrl])) = do
     -- Handle interrupts right away, regardless of our window.
