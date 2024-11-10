@@ -38,15 +38,15 @@ handleSrcWindowEvent (B.VtyEvent (V.EvKey key ms))
     -- GHCi Blocking Events.
     | key == V.KChar 's' = do
         appState@AppState.AppState{AppState.interpState} <- B.get
-        let callback = redrawStepCb appState
+        let callback = stepCb appState
         liftIO $ Daemon.scheduleWithCb interpState (Daemon.step interpState) callback
     | key == V.KChar 'c' = do
         appState@AppState.AppState{AppState.interpState} <- B.get
-        let callback = redrawStepCb appState
+        let callback = stepCb appState
         liftIO $ Daemon.scheduleWithCb interpState (Daemon.step interpState) callback
     | key == V.KChar 't' = do
         appState@AppState.AppState{AppState.interpState} <- B.get
-        let callback = redrawStepCb appState
+        let callback = stepCb appState
         liftIO $ Daemon.scheduleWithCb interpState (Daemon.trace interpState) callback
     | key == V.KChar 'b' = do
         appState <- B.get
@@ -85,16 +85,16 @@ handleSrcWindowEvent _ = pure ()
 {- | Redraw Step Callback. Called asynchronously after the 'DaemonIO' resolves
      for 'step' and similar.
 -}
-redrawStepCb
+stepCb
     :: AppState n
     -- ^ 'AppState' to use for asynchronous channel communication.
     -> Either Daemon.DaemonError (Daemon.InterpState ())
     -- ^ The incoming response from the Daemon for the 'step' (or similar) operation.
     -> IO ()
     -- ^ IO used to write to the event bounded channel.
-redrawStepCb appState (Right interpState) =
-    B.writeBChan (AppState.eventChannel appState) (RedrawStepCb appState{interpState})
-redrawStepCb appState (Left msg) =
+stepCb appState (Right interpState) =
+    B.writeBChan (AppState.eventChannel appState) (StepCb appState{interpState})
+stepCb appState (Left msg) =
     B.writeBChan (AppState.eventChannel appState) (ErrorOnCb appState (showT msg))
 
 breakpointCb
@@ -105,17 +105,17 @@ breakpointCb
 breakpointCb moduleLoc appState (Right interpState) =
     B.writeBChan
         (AppState.eventChannel appState)
-        (RedrawBreakpointCb appState{interpState} moduleLoc)
+        (BreakpointCb appState{interpState} moduleLoc)
 breakpointCb _ appState (Left msg) =
     B.writeBChan (AppState.eventChannel appState) (ErrorOnCb appState (showT msg))
 
 -- | Synchronous code to update the state after a SourceWindowEvent callback.
 handleSourceWindowPostCb
     :: CustomAppEvent (AppState AppName) -> B.EventM AppName (AppState AppName) ()
-handleSourceWindowPostCb (RedrawStepCb appState) = do
+handleSourceWindowPostCb (StepCb appState) = do
     B.put =<< AppState.selectPausedLine appState
     invalidateLineCache
-handleSourceWindowPostCb (RedrawBreakpointCb appState moduleLoc) = do
+handleSourceWindowPostCb (BreakpointCb appState moduleLoc) = do
     let interpState = AppState.interpState appState
     -- We may need to be smarter about this,
     -- because there's a chance that the module loc 'ml'
