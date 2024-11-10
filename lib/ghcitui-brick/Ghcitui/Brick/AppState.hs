@@ -30,7 +30,9 @@ module Ghcitui.Brick.AppState
     ) where
 
 import qualified Brick as B
+import qualified Brick.BChan as B
 import qualified Brick.Widgets.Edit as BE
+import Control.Concurrent (takeMVar)
 import Control.Error (atMay, fromMaybe)
 import Control.Exception (IOException, try)
 import Control.Monad.IO.Class (MonadIO (..))
@@ -45,7 +47,7 @@ import qualified Lens.Micro as Lens
 import Ghcitui.Brick.AppConfig (AppConfig (..))
 import qualified Ghcitui.Brick.AppConfig as AppConfig
 import qualified Ghcitui.Brick.AppInterpState as AIS
-import Ghcitui.Brick.AppTopLevel (AppName (..))
+import Ghcitui.Brick.AppTopLevel (AppName (..), CustomAppEvent)
 
 import qualified Ghcitui.Brick.SourceWindow as SourceWindow
 import Ghcitui.Ghcid.Daemon (toggleBreakpointLine)
@@ -80,6 +82,7 @@ Prefer to create this with 'makeInitialState'.
 data AppState n = AppState
     { interpState :: Daemon.InterpState ()
     -- ^ The interpreter handle.
+    , eventChannel :: !(B.BChan (CustomAppEvent (AppState n)))
     , getCurrentWorkingDir :: !FilePath
     -- ^ The current working directory.
     , _appInterpState :: AIS.AppInterpState T.Text n
@@ -107,7 +110,6 @@ data AppState n = AppState
     , splashContents :: !(Maybe T.Text)
     -- ^ Splash to show on start up.
     }
-    deriving (Show)
 
 newtype AppStateM m a = AppStateM {runAppStateM :: m a}
 
@@ -314,11 +316,13 @@ makeInitialState
     :: AppConfig
     -- ^ Start up config.
     -> T.Text
-    -- ^ Daemon command prefix.
+    -- ^ Daemon command suffix.
     -> FilePath
     -- ^ Workding directory.
+    -> B.BChan (CustomAppEvent (AppState AppName))
+    -- ^ Event channel to handle async with.
     -> IO (AppState AppName)
-makeInitialState appConfig target cwd = do
+makeInitialState appConfig target cwd chan = do
     let cwd' = if null cwd then "." else cwd
     let fullCmd = getCmd appConfig <> " " <> target
     let logOutput = case getDebugLogPath appConfig of
@@ -331,8 +335,10 @@ makeInitialState appConfig target cwd = do
                 { Daemon.logLevel = logLevel
                 , Daemon.logOutput = logOutput
                 }
-    interpState <-
-        Daemon.run (Daemon.startup (T.unpack fullCmd) cwd' startupConfig) >>= \case
+    interpState <- do
+        startupMVar <- Daemon.schedule (Daemon.startup (T.unpack fullCmd) cwd' startupConfig)
+        result <- takeMVar startupMVar
+        case result of
             Right iState -> pure iState
             Left er -> error (show er)
     splashContents <- AppConfig.loadStartupSplash appConfig
@@ -349,6 +355,7 @@ makeInitialState appConfig target cwd = do
         selectedFile'
         AppState
             { interpState
+            , eventChannel = chan
             , getCurrentWorkingDir = cwd'
             , _appInterpState = AIS.emptyAppInterpState LiveInterpreter
             , activeWindow = ActiveCodeViewport

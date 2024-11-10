@@ -4,6 +4,7 @@
 
 module Ghcitui.Brick.InterpWindowEvents where
 
+import qualified Brick.BChan as B
 import qualified Brick.Main as B
 import qualified Brick.Types as B
 import qualified Brick.Widgets.Edit as BE
@@ -19,10 +20,10 @@ import qualified Ghcitui.Brick.AppInterpState as AIS
 import Ghcitui.Brick.AppState as AppState
 import Ghcitui.Brick.AppTopLevel
     ( AppName (..)
+    , CustomAppEvent (..)
     )
 import Ghcitui.Brick.EventUtils
     ( commonPrefixes
-    , runDaemon2
     , reflowText
     )
 import qualified Ghcitui.Ghcid.Daemon as Daemon
@@ -39,57 +40,17 @@ handleInterpreterEvent ev = do
     case ev of
         B.VtyEvent (V.EvKey V.KEnter []) -> do
             let cmd = T.strip (T.unlines (editorContents appState))
+            let callback = replExecCb cmd appState
+            let interpState = AppState.interpState appState
             -- Actually run the command.
-            (newAppState1, output) <- runDaemon2 (Daemon.execCleaned cmd) appState
-            let newEditor =
-                    BE.applyEdit
-                        (T.killToEOF . T.gotoBOF)
-                        (appState ^. liveEditor)
-            let newAppState2 =
-                    writeDebugLog ("handled Enter: Ran '" <> cmd <> "'")
-                        . Lens.set (appInterpState . AIS.viewLock) True
-                        . Lens.over appInterpState (AIS.pushHistory [cmd])
-                        $ appendToLogs output cmd newAppState1
-            let appStateFinalIO = updateSourceMap (Lens.set liveEditor newEditor newAppState2)
-            B.put =<< liftIO appStateFinalIO
-            -- Invalidate the entire render state of the application
-            -- because we don't know what's actually changed here now.
-            B.invalidateCache
+            liftIO $ Daemon.scheduleWithCb interpState (Daemon.execCleaned cmd interpState) callback
         B.VtyEvent (V.EvKey (V.KChar '\t') []) -> do
             -- We want to preserve spaces, but not trailing newlines.
             let cmd = T.dropWhileEnd ('\n' ==) . T.unlines . editorContents $ appState
-            -- Tab completion expects input to be 'show'n in quotes.
-            -- There's probably a better way of doing this!
-            (newAppState, (prefix, completions)) <- runDaemon2 (Daemon.tabComplete cmd) appState
-            let maxCompletionLen = maximum $ T.length <$> completions
-            let columnPadding = 1
-            extent <-
-                B.lookupExtent LiveInterpreterViewport >>= \case
-                    Just e -> pure e
-                    Nothing -> error "Could not find extent of LiveInterpreterViewport"
-            let interpWidth = fst . B.extentSize $ extent
-            let completionColWidth = min (interpWidth - 2) maxCompletionLen + columnPadding
-            let numCols = interpWidth `div` completionColWidth
-            let updateCompletions cs s = case cs of
-                    -- Only one completion, just replace the entire buffer with it.
-                    [c] -> replaceCommandBuffer (prefix <> c <> " ") s
-                    -- No completions. Just go to a new prompt.
-                    [] -> appendToLogs [] cmd s
-                    -- Replace the buffer with the longest possible prefix among options, and
-                    -- print the remaining.
-                    _ ->
-                        replaceCommandBuffer (prefix <> commonPrefixes cs)
-                            . appendToLogs (reflowText numCols completionColWidth cs) cmd
-                            $ s
-            B.put
-                . writeDebugLog
-                    ( "handled Tab, Prefix was: '"
-                        <> cmd
-                        <> "' completions were: "
-                        <> showT completions
-                    )
-                . updateCompletions completions
-                $ newAppState
+            let callback = tabCompleteCb cmd appState
+            let interpState = AppState.interpState appState
+            -- Actually run the command.
+            liftIO $ Daemon.scheduleWithCb interpState (Daemon.tabComplete cmd interpState) callback
         B.VtyEvent (V.EvKey (V.KChar 'x') [V.MCtrl]) ->
             -- Toggle out of the interpreter.
             leaveInterpreter
@@ -205,3 +166,83 @@ replaceCommandBuffer replacement s = Lens.set liveEditor newEditor s
     zipp :: T.TextZipper T.Text -> T.TextZipper T.Text
     zipp = T.killToEOF . T.insertMany replacement . T.gotoBOF
     newEditor = BE.applyEdit zipp (s ^. liveEditor)
+
+-- -------------------------------------------------------------------------------------------------
+-- Callbacks and Callback utils
+-- -------------------------------------------------------------------------------------------------
+
+-- | Live Interpreter/REPL Callback. Called asynchronously after the 'DaemonIO' resolves.
+replExecCb
+    :: T.Text
+    -- ^ Command sent and ran on the Daemon.
+    -> AppState n
+    -- ^ 'AppState' to use for asynchronous channel communication.
+    -> Either Daemon.DaemonError (Daemon.InterpState (), [T.Text])
+    -- ^ The incoming response from the Daemon for the 'step' (or similar) operation.
+    -> IO ()
+    -- ^ IO used to write to the event bounded channel.
+replExecCb cmd appState (Right (interpState, logs)) =
+    B.writeBChan (AppState.eventChannel appState) (ReplExecCb appState{interpState} cmd logs)
+replExecCb _ appState (Left msg) =
+    B.writeBChan (AppState.eventChannel appState) (ErrorOnCb appState (showT msg))
+
+tabCompleteCb
+    :: T.Text
+    -- ^ Partial command to get completion of.
+    -> AppState n
+    -> Either Daemon.DaemonError (Daemon.InterpState (), (T.Text, [T.Text]))
+    -> IO ()
+tabCompleteCb cmd appState (Right (interpState, (prefix, completions))) =
+    B.writeBChan (AppState.eventChannel appState) (ReplTabCompleteCb appState{interpState} cmd (prefix, completions))
+tabCompleteCb _ appState (Left msg) =
+    B.writeBChan (AppState.eventChannel appState) (ErrorOnCb appState (showT msg))
+
+-- | Synchronous code to update the state after a InterpreterEvent callback.
+handleInterpWindowPostCb
+    :: CustomAppEvent (AppState AppName) -> B.EventM AppName (AppState AppName) ()
+handleInterpWindowPostCb (ReplExecCb appState cmd newLogs) = do
+    let newEditor =
+            BE.applyEdit
+                (T.killToEOF . T.gotoBOF)
+                (appState ^. liveEditor)
+    let newAppState2 =
+            writeDebugLog ("handled Enter: Ran '" <> cmd <> "'")
+                . Lens.set (appInterpState . AIS.viewLock) True
+                . Lens.over appInterpState (AIS.pushHistory [cmd])
+                $ appendToLogs newLogs cmd appState
+    let appStateFinalIO = updateSourceMap (Lens.set liveEditor newEditor newAppState2)
+    B.put =<< liftIO appStateFinalIO
+    -- Invalidate the entire render state of the application
+    -- because we don't know what's actually changed here now.
+    B.invalidateCache
+handleInterpWindowPostCb (ReplTabCompleteCb appState cmd (prefix, completions)) = do
+    let maxCompletionLen = maximum $ T.length <$> completions
+    let columnPadding = 1
+    extent <-
+        B.lookupExtent LiveInterpreterViewport >>= \case
+            Just e -> pure e
+            Nothing -> error "Could not find extent of LiveInterpreterViewport"
+    let interpWidth = fst . B.extentSize $ extent
+    let completionColWidth = min (interpWidth - 2) maxCompletionLen + columnPadding
+    let numCols = interpWidth `div` completionColWidth
+    let updateCompletions cs s = case cs of
+            -- Only one completion, just replace the entire buffer with it.
+            [c] -> replaceCommandBuffer (prefix <> c <> " ") s
+            -- No completions. Just go to a new prompt.
+            [] -> appendToLogs [] cmd s
+            -- Replace the buffer with the longest possible prefix among options, and
+            -- print the remaining.
+            _ ->
+                replaceCommandBuffer (prefix <> commonPrefixes cs)
+                    . appendToLogs (reflowText numCols completionColWidth cs) cmd
+                    $ s
+    B.put
+        . writeDebugLog
+            ( "handled Tab, Prefix was: '"
+                <> cmd
+                <> "' completions were: "
+                <> showT completions
+            )
+        . updateCompletions completions
+        $ appState
+handleInterpWindowPostCb _ = pure ()
