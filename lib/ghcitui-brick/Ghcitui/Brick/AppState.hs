@@ -336,8 +336,7 @@ makeInitialState appConfig target cwd chan = do
                 , Daemon.logOutput = logOutput
                 }
     interpState <- do
-        startupMVar <- Daemon.schedule (Daemon.startup (T.unpack fullCmd) cwd' startupConfig)
-        result <- takeMVar startupMVar
+        result <- Daemon.startup (T.unpack fullCmd) cwd' startupConfig
         case result of
             Right iState -> pure iState
             Left er -> error (show er)
