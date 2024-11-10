@@ -32,7 +32,6 @@ module Ghcitui.Brick.AppState
 import qualified Brick as B
 import qualified Brick.BChan as B
 import qualified Brick.Widgets.Edit as BE
-import Control.Concurrent (takeMVar)
 import Control.Error (atMay, fromMaybe)
 import Control.Exception (IOException, try)
 import Control.Monad.IO.Class (MonadIO (..))
