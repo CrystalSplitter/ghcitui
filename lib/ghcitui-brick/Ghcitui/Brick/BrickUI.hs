@@ -169,10 +169,13 @@ drawBaseLayer s =
                         . reverse
                         $ s.interpLogs
         promptLine :: B.Widget AppName
-        promptLine =
-            B.txt (AppConfig.getInterpreterPrompt . AppState.appConfig $ s)
-                <+> BE.renderEditor displayF enableCursor (s ^. liveEditor)
+        promptLine = promptWidget <+> BE.renderEditor displayF enableCursor (s ^. liveEditor)
           where
+            promptWidget :: B.Widget AppName
+            promptWidget =
+                if AppState.waitingOnRepl s
+                    then B.emptyWidget
+                    else B.txt . AppConfig.getInterpreterPrompt . AppState.appConfig $ s
             displayF :: [T.Text] -> B.Widget AppName
             displayF t = B.vBox $ B.txt <$> t
         lockToBottomOnViewLock w =
