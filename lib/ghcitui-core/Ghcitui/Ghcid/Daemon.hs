@@ -63,12 +63,13 @@ module Ghcitui.Ghcid.Daemon
 
       -- * Misc
     , isExecuting
+    , readyToExec
     , BreakpointArg (..)
     , interruptDaemon
     , LogOutput (..)
     ) where
 
-import Control.Concurrent (MVar, forkIO, newEmptyMVar, newMVar, putMVar, takeMVar)
+import Control.Concurrent (MVar, forkIO, newEmptyMVar, newMVar, putMVar, takeMVar, isEmptyMVar)
 import Control.Error
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (..))
@@ -174,10 +175,16 @@ appendExecHist cmd s@InterpState{execHist} = s{execHist = cmd : execHist}
      Note, this does not indicate whether there's a scheduled 'DaemonIO' operation,
      but rather just indicates whether we have stopped at a breakpoint in the middle
      of evaluation.
+
+     Use 'readyToExec' if you want to query the state of the actual underlying handle.
 -}
 isExecuting :: InterpState a -> Bool
 isExecuting InterpState{func = Nothing} = False
 isExecuting InterpState{func = Just _} = True
+
+-- | Is the GHCi lock busy?
+readyToExec :: InterpState a -> IO Bool
+readyToExec s = isEmptyMVar (_ghciLock s)
 
 -- | Start up the GHCi Daemon.
 startup

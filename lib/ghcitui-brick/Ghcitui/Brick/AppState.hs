@@ -27,6 +27,7 @@ module Ghcitui.Brick.AppState
     , toggleBreakpointLine
     , updateSourceMap
     , writeDebugLog
+    , daemonReadyToExec
     ) where
 
 import qualified Brick as B
@@ -47,6 +48,7 @@ import Ghcitui.Brick.AppConfig (AppConfig (..))
 import qualified Ghcitui.Brick.AppConfig as AppConfig
 import qualified Ghcitui.Brick.AppInterpState as AIS
 import Ghcitui.Brick.AppTopLevel (AppName (..), CustomAppEvent)
+
 
 import qualified Ghcitui.Brick.SourceWindow as SourceWindow
 import Ghcitui.Ghcid.Daemon (toggleBreakpointLine)
@@ -82,6 +84,8 @@ data AppState n = AppState
     { interpState :: Daemon.InterpState ()
     -- ^ The interpreter handle.
     , eventChannel :: !(B.BChan (CustomAppEvent (AppState n)))
+    , waitingOnRepl :: !Bool
+    -- ^ Wether we launched a long REPL command that we're waiting on.
     , getCurrentWorkingDir :: !FilePath
     -- ^ The current working directory.
     , _appInterpState :: AIS.AppInterpState T.Text n
@@ -148,6 +152,9 @@ sourceWindow = Lens.lens _sourceWindow (\x srcW -> x{_sourceWindow = srcW})
 
 selectedFile :: AppState n -> Maybe FilePath
 selectedFile = _selectedFile
+
+daemonReadyToExec :: AppState n -> IO Bool
+daemonReadyToExec appState = Daemon.readyToExec appState.interpState
 
 -- | Change the selected file for the source window.
 setSelectedFile :: (MonadIO m) => Maybe FilePath -> AppState n -> m (AppState n)
@@ -354,6 +361,7 @@ makeInitialState appConfig target cwd chan = do
         AppState
             { interpState
             , eventChannel = chan
+            , waitingOnRepl = False
             , getCurrentWorkingDir = cwd'
             , _appInterpState = AIS.emptyAppInterpState LiveInterpreter
             , activeWindow = ActiveCodeViewport
