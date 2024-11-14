@@ -46,6 +46,7 @@ data AppConfig = AppConfig
     }
     deriving (Show)
 
+-- | Set up the default config for the App startup.
 defaultConfig :: AppConfig
 defaultConfig =
     AppConfig
