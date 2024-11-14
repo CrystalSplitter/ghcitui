@@ -6,9 +6,10 @@ module Ghcitui.Util
     , getNumDigits
     , formatDigits
     , dropMiddleToFitText
+    , revealNewlines
     ) where
 
-import Data.Text (Text, breakOn, drop, length, pack, take, takeEnd)
+import Data.Text (Text, breakOn, drop, length, pack, replace, take, takeEnd)
 import Prelude hiding (drop, length, take)
 
 -- | Split text based on a delimiter.
@@ -77,3 +78,6 @@ dropMiddleToFitText w text
     halfWidth = fromIntegral (w - 1) / 2.0 :: Float
     prefix = take (floor halfWidth) text
     suffix = takeEnd (ceiling halfWidth) text
+
+revealNewlines :: Text -> Text
+revealNewlines = replace "\n" "↓"
