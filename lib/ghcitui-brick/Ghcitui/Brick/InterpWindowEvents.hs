@@ -40,17 +40,28 @@ handleInterpreterEvent ev = do
     case ev of
         B.VtyEvent (V.EvKey V.KEnter []) -> do
             let cmd = T.strip (T.unlines (editorContents appState))
-            let callback = replExecCb cmd appState
+            let finishedState = appState{waitingOnRepl = False}
+            let callback = replExecCb cmd finishedState
+            -- While the command is running, put write some temporary confirmation that the command
+            -- was run to the logs.
+            B.put
+                . appendToLogs mempty cmd
+                . replaceCommandBuffer ""
+                $ appState{waitingOnRepl = True}
+            B.invalidateCache
+            -- Actually schedule the command.
             let interpState = AppState.interpState appState
-            -- Actually run the command.
-            liftIO $ Daemon.scheduleWithCb interpState (Daemon.execCleaned cmd interpState) callback
+            liftIO $
+                Daemon.scheduleWithCb interpState (Daemon.execCleaned cmd interpState) callback
         B.VtyEvent (V.EvKey (V.KChar '\t') []) -> do
             -- We want to preserve spaces, but not trailing newlines.
             let cmd = T.dropWhileEnd ('\n' ==) . T.unlines . editorContents $ appState
             let callback = tabCompleteCb cmd appState
             let interpState = AppState.interpState appState
-            -- Actually run the command.
-            liftIO $ Daemon.scheduleWithCb interpState (Daemon.tabComplete cmd interpState) callback
+            B.put appState
+            -- Schedule the tab completion.
+            liftIO $
+                Daemon.scheduleWithCb interpState (Daemon.tabComplete cmd interpState) callback
         B.VtyEvent (V.EvKey (V.KChar 'x') [V.MCtrl]) ->
             -- Toggle out of the interpreter.
             leaveInterpreter
@@ -113,11 +124,16 @@ handleInterpreterEvent ev = do
                 B.put (AppState.changeReplWidgetSize (-1) appState)
 
         -- Actually handle keystrokes.
-        ev' -> do
-            -- When typing, bring us back down to the terminal.
-            B.put (Lens.set (appInterpState . AIS.viewLock) True appState)
-            -- Actually handle text input commands.
-            B.zoom liveEditor $ BE.handleEditorEvent ev'
+        ev' ->
+            if waitingOnRepl appState
+                then
+                    -- Don't print a prompt if we're waiting.
+                    pure ()
+                else do
+                    -- When typing, bring us back down to the terminal.
+                    B.put (Lens.set (appInterpState . AIS.viewLock) True appState)
+                    -- Actually handle text input commands.
+                    B.zoom liveEditor $ BE.handleEditorEvent ev'
   where
     editorContents appState = BE.getEditContents $ appState ^. liveEditor
     storeCommandBuffer appState =
