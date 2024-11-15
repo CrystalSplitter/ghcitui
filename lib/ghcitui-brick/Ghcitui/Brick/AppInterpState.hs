@@ -31,7 +31,7 @@ data AppInterpState s n = AppInterpState
     -- ^ The text currently typed into the editor, but not yet executed or in the history.
     , _cmdHistory :: ![[s]]
     , historyPos :: !Int
-    -- ^ Current position
+    -- ^ Current position.
     }
     deriving (Show)
 

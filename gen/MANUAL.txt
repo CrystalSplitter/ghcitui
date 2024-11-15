@@ -29,13 +29,23 @@ STARTING AND STOPPING
 
           $ ghcitui -C some/other/directory
 
+       You  can  specify  a different starting command with --cmd <exec> or -c
+       <exec>.
+
+          $ ghcitui -c 'ghci'
+          $ ghcitui --cmd 'stack <args>'
+
+       This is handy if you don't want to use cabal repl. Any  executable  can
+       be  used  with --cmd is that the underlying command communicates textu‐
+       ally through ghci.
+
    Stopping
-       To  quit,  press  <ESC>  or q while in the code viewport panel to quit.
+       To quit, press <ESC> or q while in the code  viewport  panel  to  quit.
        While not in the code viewport panel, you may press <ESC> to get to the
        viewport panel.
 
 LAYOUT
-       GHCiTUI is an in-terminal viewer for GHCi. The TUI is  broken  up  into
+       GHCiTUI  is  an  in-terminal viewer for GHCi. The TUI is broken up into
        three primary panels, with some additional auxiliary panels for special
        use cases:
 
@@ -51,35 +61,35 @@ LAYOUT
           │                  │      │
           └──────────────────┴──────┘
 
-       Source  Viewer:  This  panel shows source code. You can step, continue,
+       Source Viewer: This panel shows source code. You  can  step,  continue,
        and toggle breakpoints among other operations in this panel.
 
-       Live Interpreter: This panel shows the GHCi/REPL passthrough.  You  can
-       enter  expressions and GHCi commands here like you would normally, with
+       Live  Interpreter:  This panel shows the GHCi/REPL passthrough. You can
+       enter expressions and GHCi commands here like you would normally,  with
        some additional keybindings.
 
-       Info: This panel displays miscellaneous info  about  whatever  is  cur‐
-       rently  running.  For  example,  it  can  display the current bindings,
+       Info:  This  panel  displays  miscellaneous info about whatever is cur‐
+       rently running. For example,  it  can  display  the  current  bindings,
        loaded modules, and the current program trace.
 
 NAVIGATION
-       At any point in time, you can revert back to the  Source  Viewer  panel
-       with  the  <Esc>  key,  and you can always quit by hitting <Esc> in the
+       At  any  point  in time, you can revert back to the Source Viewer panel
+       with the <Esc> key, and you can always quit by  hitting  <Esc>  in  the
        Source Viewer panel.
 
        On top of each panel is a label where the navigation key combination is
        located.  For example, the key combination above the Modules panel dis‐
-       plays [M].  Pressing this key combination will move the focus  to  that
+       plays  [M].   Pressing this key combination will move the focus to that
        panel.
 
 KEYBINDINGS
-       At  this time, keybindings are hardcoded. This will hopefully change in
+       At this time, keybindings are hardcoded. This will hopefully change  in
        the future with a keybinding configuration file.
 
    Source Viewer
        • ?: Display help inside GHCiTUI.
 
-       • Ctrl+x: Toggle between the Source Viewer  and  the  Live  Interpreter
+       • Ctrl+x:  Toggle  between  the  Source Viewer and the Live Interpreter
          panels.
 
        • M: Switch to the module panel.
@@ -101,11 +111,14 @@ KEYBINDINGS
 
        • s: Advance execution by one step. Same as the :step in GHCi.
 
-       • c:  Advance  execution  until  next  breakpoint. Same as :continue in
+       • c: Advance execution until next  breakpoint.  Same  as  :continue  in
          GHCi.
 
-       • t: Advance execution until next breakpoint  under  tracing.  Same  as
+       • t:  Advance  execution  until  next breakpoint under tracing. Same as
          :trace in GHCi.
+
+       • Ctrl+c`: Send an interrupt to the daemon. Useful for  breaking  infi‐
+         nite loops.
 
    Live Interpreter (REPL)
        • Ctrl+x:  Toggle  between  the  Source Viewer and the Live Interpreter
@@ -131,6 +144,9 @@ KEYBINDINGS
 
        • <Tab>: Autocomplete (yes there's basic autocomplete support)
 
+       • Ctrl+c`: Send an interrupt to the daemon. Useful for  breaking  infi‐
+         nite loops.
+
    Modules
        • ?: Display help inside GHCiTUI.
 
@@ -147,9 +163,9 @@ KEYBINDINGS
        • <Enter>, o: Open the selected module.
 
 TRACING
-       Tracing works the same as in GHCi, but there's a panel to  display  the
-       current  backtrace  in  the  "Trace  History" subpanel. To populate the
-       Trace History panel, run :trace in the Live Interpreter  panel  with  a
+       Tracing  works  the same as in GHCi, but there's a panel to display the
+       current backtrace in the "Trace  History"  subpanel.  To  populate  the
+       Trace  History  panel,  run :trace in the Live Interpreter panel with a
        breakpoint set. For example:
 
           $ cat Main.hs
@@ -175,7 +191,7 @@ REPORTING BUGS/FEATURE REQUESTS
        You can file bugs and feature requests both at:
         <https://github.com/CrystalSplitter/ghcitui/issues>
 
-       Please  check  to see if the bug/request already exists before filing a
+       Please check to see if the bug/request already exists before  filing  a
        new one.
 
                                                               GHCITUI MANUAL()
