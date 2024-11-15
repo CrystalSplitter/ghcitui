@@ -50,6 +50,18 @@ You can specify another starting directory with the ``-C <DIR>`` flag.
   $ ghcitui -C some/other/directory
 
 
+You can specify a different starting command with ``--cmd <exec>`` or
+``-c <exec>``.
+
+.. code-block:: bash
+
+  $ ghcitui -c 'ghci'
+  $ ghcitui --cmd 'stack <args>'
+
+This is handy if you don't want to use ``cabal repl``. Any executable can be
+used with ``--cmd`` is that the underlying command communicates textually
+through ``ghci``.
+
 ********
 Stopping
 ********
@@ -130,6 +142,7 @@ Source Viewer
   GHCi.
 - ``t``: Advance execution until next breakpoint under tracing. Same as
   ``:trace`` in GHCi.
+- ``Ctrl+c```: Send an interrupt to the daemon. Useful for breaking infinite loops.
 
 ***********************
 Live Interpreter (REPL)
@@ -148,6 +161,7 @@ Live Interpreter (REPL)
   panel size.
 - ``<Enter>``: Enter a command to the REPL.
 - ``<Tab>``: Autocomplete (yes there's basic autocomplete support)
+- ``Ctrl+c```: Send an interrupt to the daemon. Useful for breaking infinite loops.
 
 *******
 Modules

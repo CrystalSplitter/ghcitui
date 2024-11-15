@@ -178,6 +178,7 @@ drawBaseLayer s =
                     else B.txt . AppConfig.getInterpreterPrompt . AppState.appConfig $ s
             displayF :: [T.Text] -> B.Widget AppName
             displayF t = B.vBox $ B.txt <$> t
+
         lockToBottomOnViewLock w =
             if s ^. appInterpState . AIS.viewLock
                 then B.visible w

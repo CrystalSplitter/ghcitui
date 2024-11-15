@@ -209,7 +209,9 @@ tabCompleteCb
     -> Either Daemon.DaemonError (Daemon.InterpState (), (T.Text, [T.Text]))
     -> IO ()
 tabCompleteCb cmd appState (Right (interpState, (prefix, completions))) =
-    B.writeBChan (AppState.eventChannel appState) (ReplTabCompleteCb appState{interpState} cmd (prefix, completions))
+    B.writeBChan
+        (AppState.eventChannel appState)
+        (ReplTabCompleteCb appState{interpState} cmd (prefix, completions))
 tabCompleteCb _ appState (Left msg) =
     B.writeBChan (AppState.eventChannel appState) (ErrorOnCb appState (showT msg))
 
