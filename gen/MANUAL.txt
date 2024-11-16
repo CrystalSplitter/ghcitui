@@ -117,11 +117,11 @@ KEYBINDINGS
        • t:  Advance  execution  until  next breakpoint under tracing. Same as
          :trace in GHCi.
 
-       • Ctrl+c`: Send an interrupt to the daemon. Useful for  breaking  infi‐
-         nite loops.
+       • Ctrl+c: Send an interrupt to the daemon. Useful for breaking infinite
+         loops.
 
    Live Interpreter (REPL)
-       • Ctrl+x:  Toggle  between  the  Source Viewer and the Live Interpreter
+       • Ctrl+x: Toggle between the Source Viewer  and  the  Live  Interpreter
          panels.
 
        • <Esc>: Switch to Source Viewer.
@@ -144,8 +144,8 @@ KEYBINDINGS
 
        • <Tab>: Autocomplete (yes there's basic autocomplete support)
 
-       • Ctrl+c`: Send an interrupt to the daemon. Useful for  breaking  infi‐
-         nite loops.
+       • Ctrl+c: Send an interrupt to the daemon. Useful for breaking infinite
+         loops.
 
    Modules
        • ?: Display help inside GHCiTUI.
