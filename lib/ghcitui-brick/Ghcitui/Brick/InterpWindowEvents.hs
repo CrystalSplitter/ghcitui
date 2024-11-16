@@ -1,8 +1,10 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedRecordDot #-}
 
-module Ghcitui.Brick.InterpWindowEvents where
+module Ghcitui.Brick.InterpWindowEvents
+    ( handleInterpreterEvent
+    , handleInterpWindowPostCb
+    ) where
 
 import qualified Brick.BChan as B
 import qualified Brick.Main as B
