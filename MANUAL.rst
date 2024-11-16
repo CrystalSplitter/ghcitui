@@ -142,7 +142,7 @@ Source Viewer
   GHCi.
 - ``t``: Advance execution until next breakpoint under tracing. Same as
   ``:trace`` in GHCi.
-- ``Ctrl+c```: Send an interrupt to the daemon. Useful for breaking infinite loops.
+- ``Ctrl+c``: Send an interrupt to the daemon. Useful for breaking infinite loops.
 
 ***********************
 Live Interpreter (REPL)
@@ -161,7 +161,7 @@ Live Interpreter (REPL)
   panel size.
 - ``<Enter>``: Enter a command to the REPL.
 - ``<Tab>``: Autocomplete (yes there's basic autocomplete support)
-- ``Ctrl+c```: Send an interrupt to the daemon. Useful for breaking infinite loops.
+- ``Ctrl+c``: Send an interrupt to the daemon. Useful for breaking infinite loops.
 
 *******
 Modules
