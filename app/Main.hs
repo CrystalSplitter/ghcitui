@@ -98,6 +98,6 @@ main = do
     programName = "ghcitui"
     programDescription = Opt.progDesc (
             programName <> ": A TUI interface for GHCi."
-            <> "Press '?' while running for full help."
+            <> " Press '?' while running for full help."
         )
     parserInfo = Opt.info (Opt.helper <*> parseOpts) (Opt.fullDesc <> programDescription)

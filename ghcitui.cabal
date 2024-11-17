@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               ghcitui
-version:            0.4.0.0
+version:            0.4.1.0
 synopsis:           A Terminal User Interface (TUI) for GHCi
 
 description:
@@ -79,7 +79,10 @@ library
                         , regex-base ^>= 0.94.0.2
                         , regex-tdfa >= 1.3.2 && < 1.4
                         , string-interpolate >= 0.3.2.1 && < 0.4
-                        , text >= 2.0 && < 2.2
+                        -- Pinned to less than 2.1.2, because it breaks
+                        -- with FSNotify.
+                        , text >= 2.0 && < 2.3
+                        , fsnotify ^>= 0.4.1.0
                         , transformers ^>= 0.6.1.0
                         -- Needed to limit string-interpolate compat.
                         , utf8-string >= 1.0.2 && < 1.1
