@@ -1,5 +1,12 @@
 # Revision history for ghcitui
 
+## 0.4.1.0 -- 2024-11-16
+
+### Bug fixes
+
+- Fixed dependency error with `fsnotify` failing to build due to
+  `text` show conflict.
+
 ## 0.4.0.0 -- 2024-11-15
 
 ### New features

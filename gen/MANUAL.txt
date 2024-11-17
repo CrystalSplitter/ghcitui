@@ -1,19 +1,19 @@
 CLI SYNOPSIS
           Usage: ghcitui [--version] [--debug-console] [-v] [--daemon-log LOGFILE]
-                        [-c|--cmd CMD] [-C|--workdir DIR] [TARGET]
+                         [-c|--cmd CMD] [-C|--workdir DIR] [TARGET]
 
-            ghcitui: A TUI interface for GHCi
+            ghcitui: A TUI interface for GHCi. Press '?' while running for full help.
 
           Available options:
             -h,--help                Show this help text
             --version                Print the version number and exit
             --debug-console          Display the debug console
             -v                       Set verbosity for output logs. Pass multiple times
-                                    (e.g -vvv) to increase the logging. Use --daemon-log
-                                    to specify where the logs go.
+                                     (e.g -vvv) to increase the logging. Use --daemon-log
+                                     to specify where the logs go.
             --daemon-log LOGFILE     File path for debugging daemon logs. Used with -v.
-                                    Setting this to 'stdout' or 'stderr' sends logs to
-                                    each, respectively. Defaults to /tmp/ghcitui.log.
+                                     Setting this to 'stdout' or 'stderr' sends logs to
+                                     each, respectively. Defaults to 'stderr'
             -c,--cmd CMD             Command to start the internal interpreter
             -C,--workdir DIR         Set working dir
 
