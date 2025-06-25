@@ -14,14 +14,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4.1.1
+    - uses: actions/checkout@v4.2.2
     - uses: haskell-actions/setup@v2.7.6
       with:
         ghc-version: 9.8.1
         cabal-version: latest
 
     - name: Cache
-      uses: actions/cache@v4.0.0
+      uses: actions/cache@v4.2.0
       env:
         cache-name: cache-cabal
       with:
@@ -61,14 +61,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4.1.1
+    - uses: actions/checkout@v4.2.2
     - uses: haskell-actions/setup@v2.7.6
       with:
         ghc-version: 9.4.7
         cabal-version: latest
 
     - name: Cache
-      uses: actions/cache@v4.0.0
+      uses: actions/cache@v4.2.0
       env:
         cache-name: cache-cabal-oldest
       with:
