@@ -49,7 +49,7 @@ executable ghcitui
     main-is:            Main.hs
     build-depends:      base >= 4.16 && < 5
                         , ghcitui-brick
-                        , optparse-applicative >= 0.17 && < 0.19
+                        , optparse-applicative >= 0.17 && < 0.20
                         , ghcitui
                         , text
     hs-source-dirs:     app
@@ -71,7 +71,7 @@ library
     hs-source-dirs:     lib/ghcitui-core
     build-depends:      base >= 4.16 && < 5
                         , array ^>= 0.5
-                        , containers >= 0.6.8 && < 0.8
+                        , containers >= 0.6.8 && < 0.9
                         , errors >= 2.2 && < 2.4
                         -- Needed to limit ghcid compat.
                         , extra >= 1.7.14 && < 1.9
@@ -111,7 +111,7 @@ library
 library ghcitui-brick
     hs-source-dirs:     lib/ghcitui-brick
     build-depends:      base >= 4.16 && < 5
-                        , brick >= 2.2 && < 2.5
+                        , brick >= 2.2 && < 2.10
                         , containers
                         , errors
                         , file-embed ^>= 0.0.15
@@ -121,7 +121,7 @@ library ghcitui-brick
                         , text
                         , text-zipper ^>= 0.13
                         , vector >= 0.10 && < 0.14
-                        , vty >= 5.38 && < 6.3
+                        , vty >= 5.38 && < 6.5
                         , word-wrap ^>= 0.5
     exposed-modules:    Ghcitui.Brick
     other-modules:      Ghcitui.Brick.AppConfig
