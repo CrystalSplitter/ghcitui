@@ -1,5 +1,11 @@
 # Revision history for ghcitui
 
+## 0.4.1.1 -- 2025-06-25
+
+### Misc
+
+- Updated dependency ranges. No new features or bug fixes.
+
 ## 0.4.1.0 -- 2024-11-16
 
 ### Bug fixes
