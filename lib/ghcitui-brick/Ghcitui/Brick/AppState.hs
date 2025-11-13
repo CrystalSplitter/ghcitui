@@ -43,12 +43,12 @@ import qualified Data.Text.IO as T
 import qualified Data.Vector as Vec
 import Lens.Micro ((^.))
 import qualified Lens.Micro as Lens
+import qualified System.Info
 
 import Ghcitui.Brick.AppConfig (AppConfig (..))
 import qualified Ghcitui.Brick.AppConfig as AppConfig
 import qualified Ghcitui.Brick.AppInterpState as AIS
 import Ghcitui.Brick.AppTopLevel (AppName (..), CustomAppEvent)
-
 
 import qualified Ghcitui.Brick.SourceWindow as SourceWindow
 import Ghcitui.Ghcid.Daemon (toggleBreakpointLine)
@@ -89,8 +89,9 @@ data AppState n = AppState
     , getCurrentWorkingDir :: !FilePath
     -- ^ The current working directory.
     , _appInterpState :: AIS.AppInterpState T.Text n
-    -- ^ The live interpreter state (separate from the interpreter
-    -- and the app state itself.
+    {- ^ The live interpreter state (separate from the interpreter
+    and the app state itself.
+    -}
     , interpLogs :: ![Text]
     , appConfig :: !AppConfig
     -- ^ Program launch configuration.
@@ -104,8 +105,9 @@ data AppState n = AppState
     , sourceMap :: Map.Map FilePath T.Text
     -- ^ Mapping between source filepaths and their contents.
     , _currentWidgetSizes :: WidgetSizes
-    -- ^ Current window/box/panel sizes (since it can change). Do not edit
-    -- directly.
+    {- ^ Current window/box/panel sizes (since it can change). Do not edit
+    directly.
+    -}
     , displayDebugConsoleLogs :: !Bool
     -- ^ Whether to display debug Console logs.
     , debugConsoleLogs :: [Text]
@@ -336,10 +338,12 @@ makeInitialState appConfig target cwd chan = do
             "stdout" -> Daemon.LogOutputStdOut
             filepath -> Daemon.LogOutputFile filepath
     let logLevel = LogConfig.LogLevel (AppConfig.getVerbosity appConfig)
+    let osType = Just . T.pack $ System.Info.os
     let startupConfig =
             Daemon.StartupConfig
                 { Daemon.logLevel = logLevel
                 , Daemon.logOutput = logOutput
+                , Daemon.osType = osType
                 }
     interpState <- do
         result <- Daemon.startup (T.unpack fullCmd) cwd' startupConfig
